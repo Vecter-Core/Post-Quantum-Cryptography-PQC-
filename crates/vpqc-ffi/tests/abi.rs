@@ -71,8 +71,89 @@ fn open(sk: &[u8], sealed: &[u8], aad: &[u8]) -> (i32, Vec<u8>) {
 }
 
 #[test]
-fn abi_version_is_1_0() {
-    assert_eq!(vpqc_abi_version(), 1 << 16);
+fn abi_version_is_1_1() {
+    assert_eq!(vpqc_abi_version(), (1 << 16) | 1);
+}
+
+fn protect(sk: &[u8], pass: &[u8], memory_kib: u32) -> (i32, Vec<u8>) {
+    let mut out = empty();
+    let rc = unsafe {
+        vpqc_secret_key_protect(
+            sk.as_ptr(),
+            sk.len(),
+            pass.as_ptr(),
+            pass.len(),
+            memory_kib,
+            &mut out,
+        )
+    };
+    let v = bytes(&out);
+    unsafe { vpqc_buf_free(&mut out) };
+    (rc, v)
+}
+
+fn unprotect(data: &[u8], pass: &[u8]) -> (i32, Vec<u8>) {
+    let mut out = empty();
+    let rc = unsafe {
+        vpqc_secret_key_unprotect(
+            data.as_ptr(),
+            data.len(),
+            pass.as_ptr(),
+            pass.len(),
+            &mut out,
+        )
+    };
+    let v = bytes(&out);
+    unsafe { vpqc_buf_free(&mut out) };
+    (rc, v)
+}
+
+#[test]
+fn protected_secret_keys() {
+    let (pk, sk) = keygen(vpqc_encryption_keygen, 1);
+    let (rc, text) = protect(&sk, "mật khẩu".as_bytes(), 8192);
+    assert_eq!(rc, VPQC_OK);
+    assert!(text.starts_with(b"-----BEGIN VPQC PROTECTED SECRET KEY-----\n"));
+    assert_eq!(
+        unsafe { vpqc_secret_key_is_protected(text.as_ptr(), text.len()) },
+        1
+    );
+    assert_eq!(
+        unsafe { vpqc_secret_key_is_protected(sk.as_ptr(), sk.len()) },
+        0
+    );
+    assert_eq!(
+        unsafe { vpqc_secret_key_is_protected(std::ptr::null(), 5) },
+        0
+    );
+    let (rc, back) = unprotect(&text, "mật khẩu".as_bytes());
+    assert_eq!(rc, VPQC_OK);
+    assert_eq!(back, sk);
+    // The recovered key works.
+    let (_, sealed) = seal(&pk, b"m", b"");
+    assert_eq!(open(&back, &sealed, b""), (VPQC_OK, b"m".to_vec()));
+    assert_eq!(unprotect(&text, b"wrong").0, VPQC_ERR_DECRYPTION_FAILED);
+    assert_eq!(unprotect(&sk, b"x").0, VPQC_ERR_FORMAT);
+    assert_eq!(protect(&sk, b"", 0).0, VPQC_ERR_INVALID_ARGUMENT);
+    assert_eq!(protect(&sk, b"x", 1024).0, VPQC_ERR_INVALID_ARGUMENT);
+    assert_eq!(protect(b"junk", b"x", 8192).0, VPQC_ERR_FORMAT);
+    let mut out = empty();
+    assert_eq!(
+        unsafe { vpqc_secret_key_protect(std::ptr::null(), 3, b"x".as_ptr(), 1, 0, &mut out) },
+        VPQC_ERR_INVALID_ARGUMENT
+    );
+    assert_eq!(
+        unsafe {
+            vpqc_secret_key_unprotect(
+                text.as_ptr(),
+                text.len(),
+                b"x".as_ptr(),
+                1,
+                std::ptr::null_mut(),
+            )
+        },
+        VPQC_ERR_INVALID_ARGUMENT
+    );
 }
 
 #[test]

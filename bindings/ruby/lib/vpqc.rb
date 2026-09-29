@@ -69,6 +69,18 @@ module Vpqc
       new(Native.key_from_text(Native::KEY_SECRET, text))
     end
 
+    # Decrypts a passphrase-protected key (ADR-0013: Argon2id, XChaCha20-Poly1305), armored text
+    # or binary, as written by #to_protected_text, another vpqc binding or
+    # `vpqc keygen --passphrase`. Raises Vpqc::DecryptionError for a wrong passphrase.
+    def self.from_protected(data, passphrase)
+      new(Native.unprotect_secret_key(data, passphrase))
+    end
+
+    # Whether +data+ is a protected secret key (armored or binary).
+    def self.protected?(data)
+      Native.protected_secret_key?(data)
+    end
+
     def initialize(bytes)
       @bytes = bytes
     end
@@ -81,6 +93,12 @@ module Vpqc
     # Armored text (unencrypted).
     def to_text
       Native.key_to_text(Native::KEY_SECRET, raw)
+    end
+
+    # Armored text encrypted under +passphrase+. +memory_kib+ is the Argon2id memory: 0 for the
+    # default (64 MiB), else 8192 to 1048576.
+    def to_protected_text(passphrase, memory_kib: 0)
+      Native.protect_secret_key(raw, passphrase, memory_kib)
     end
 
     # @api private

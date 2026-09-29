@@ -15,6 +15,11 @@ dec.decode(vpqc.unseal(keys.secretKey, sealed, enc.encode("ctx"))); // "secret"
 const signer = vpqc.generateSigningKeypair();             // Ed25519 + ML-DSA-65 composite
 const sig = vpqc.sign(signer.secretKey, enc.encode("release"), enc.encode("my-app/v1"));
 vpqc.verify(signer.publicKey, enc.encode("release"), enc.encode("my-app/v1"), sig); // throws if invalid
+
+// Secret keys at rest, encrypted under a passphrase (Argon2id + XChaCha20-Poly1305); the text
+// is readable by every vpqc binding and the `vpqc` CLI.
+const stored = vpqc.protectSecretKey(signer.secretKey, "a long passphrase");
+const secretKey = vpqc.unprotectSecretKey(stored, "a long passphrase"); // throws DECRYPTION_FAILED if wrong
 ```
 
 Browsers and edge runtimes (ES modules) must initialise the module first:

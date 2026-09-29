@@ -29,6 +29,31 @@ final class SecretKey
         return new self(Native::keyFromText(Native::KEY_SECRET, $text));
     }
 
+    /**
+     * Decrypt a passphrase-protected key (ADR-0013: Argon2id, XChaCha20-Poly1305), armored text
+     * or binary, as written by {@see toProtectedText()}, another vpqc binding or
+     * `vpqc keygen --passphrase`. Throws DecryptionException for a wrong passphrase.
+     */
+    public static function fromProtected(string $data, string $passphrase): self
+    {
+        return new self(Native::unprotectSecretKey($data, $passphrase));
+    }
+
+    /** Whether $data is a protected secret key (armored or binary). */
+    public static function isProtected(string $data): bool
+    {
+        return Native::isProtectedSecretKey($data);
+    }
+
+    /**
+     * Armored text encrypted under $passphrase. $memoryKib is the Argon2id memory: 0 for the
+     * default (64 MiB), else 8192 to 1048576.
+     */
+    public function toProtectedText(string $passphrase, int $memoryKib = 0): string
+    {
+        return Native::protectSecretKey($this->raw(), $passphrase, $memoryKib);
+    }
+
     /** Binary encoding (unencrypted). */
     public function toBytes(): string
     {

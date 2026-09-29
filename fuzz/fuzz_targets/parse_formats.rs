@@ -20,6 +20,13 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(k) = decode_secret_key(data) {
         assert_eq!(encode_secret_key(&k), data);
     }
+    if let Ok(k) = vpqc_format::protected::ProtectedSecretKey::decode(data) {
+        assert_eq!(k.encode().unwrap(), data);
+        assert!(vpqc_format::protected::is_protected_secret_key(data));
+        // Only the KEK path: the passphrase path would spend up to 1 GiB of Argon2 per input.
+        // No seed was encrypted under this KEK, so opening one would be an AEAD forgery.
+        assert!(vpqc::protect::unprotect_with_kek(data, &[0x42; 32]).is_err(), "forged protected key opened");
+    }
     if let Ok(h) = StreamHeader::decode_prefix(data) {
         let enc = h.encode().unwrap();
         assert_eq!(&data[..enc.len()], &enc[..]);
@@ -36,7 +43,7 @@ fuzz_target!(|data: &[u8]| {
         }
     }
     if let Ok(text) = std::str::from_utf8(data) {
-        for label in ["VPQC PUBLIC KEY", "VPQC SECRET KEY"] {
+        for label in ["VPQC PUBLIC KEY", "VPQC SECRET KEY", "VPQC PROTECTED SECRET KEY"] {
             if let Ok(bytes) = dearmor(label, text) {
                 // Canonical armor of the decoded bytes decodes to the same bytes.
                 assert_eq!(dearmor(label, &armor(label, &bytes)).unwrap(), bytes);

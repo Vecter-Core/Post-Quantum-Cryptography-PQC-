@@ -216,3 +216,52 @@ def test_rewrap_for_key_rotation(tmp_path):
     vpqc.encrypt_file(old.public, src, tmp_path / "plain", aad=b"k")
     with pytest.raises(vpqc.VpqcError):
         vpqc.rewrap_file(old.secret, new.public, tmp_path / "plain", tmp_path / "v4", aad=b"k")
+
+
+def test_passphrase_protected_secret_keys(tmp_path):
+    keys = vpqc.generate_signing_keypair()
+    text = keys.secret.to_protected_text("mật khẩu đủ dài", memory_kib=8192)
+    assert text.startswith("-----BEGIN VPQC PROTECTED SECRET KEY-----")
+    assert vpqc.is_protected_secret_key(text) and not vpqc.is_protected_secret_key(keys.secret.to_text())
+    sk = vpqc.SecretKey.from_protected(text, "mật khẩu đủ dài")
+    assert sk == keys.secret
+    with pytest.raises(vpqc.DecryptionError):
+        vpqc.SecretKey.from_protected(text, "wrong")
+    with pytest.raises(vpqc.InvalidInputError):
+        keys.secret.to_protected_text("x", memory_kib=1024)
+    with pytest.raises(vpqc.InvalidInputError):
+        keys.secret.to_protected_text("")
+    # load(): plain text, plain binary, protected (passphrase required).
+    (tmp_path / "plain").write_text(keys.secret.to_text())
+    (tmp_path / "bin").write_bytes(keys.secret.to_bytes())
+    (tmp_path / "prot").write_text(text)
+    assert vpqc.SecretKey.load(tmp_path / "plain") == keys.secret
+    assert vpqc.SecretKey.load(tmp_path / "bin") == keys.secret
+    assert vpqc.SecretKey.load(tmp_path / "prot", passphrase=b"m\xe1\xba\xadt kh\xe1\xba\xa9u \xc4\x91\xe1\xbb\xa7 d\xc3\xa0i") == keys.secret
+    with pytest.raises(vpqc.InvalidInputError):
+        vpqc.SecretKey.load(tmp_path / "prot")
+
+
+def test_protected_keys_interoperate_with_cli(tmp_path):
+    import os
+    import shutil
+    import subprocess
+
+    cli = os.environ.get("VPQC_CLI") or shutil.which("vpqc")
+    if not cli:
+        pytest.skip("vpqc CLI not available (set VPQC_CLI)")
+    env = dict(os.environ, VPQC_PASSPHRASE="shared passphrase 2026")
+    env.pop("VPQC_PASSPHRASE_FILE", None)
+    # CLI generates a protected key; Python loads it.
+    subprocess.run([cli, "keygen", "--purpose", "encrypt", "--out", str(tmp_path / "c"), "--passphrase",
+                    "--kdf-memory", "8"], check=True, env=env, capture_output=True)
+    sk = vpqc.SecretKey.load(tmp_path / "c.vpqc-secret", passphrase="shared passphrase 2026")
+    pk = vpqc.PublicKey.from_text((tmp_path / "c.pub").read_text())
+    assert vpqc.unseal(sk, vpqc.seal(pk, b"x")) == b"x"
+    # Python protects a key; the CLI uses it.
+    keys = vpqc.generate_encryption_keypair()
+    (tmp_path / "p.key").write_text(keys.secret.to_protected_text("shared passphrase 2026", memory_kib=8192))
+    (tmp_path / "p.sealed").write_bytes(vpqc.seal(keys.public, b"from python"))
+    res = subprocess.run([cli, "open", "--key", str(tmp_path / "p.key"), str(tmp_path / "p.sealed")],
+                         check=True, capture_output=True, env=env)
+    assert res.stdout == b"from python"

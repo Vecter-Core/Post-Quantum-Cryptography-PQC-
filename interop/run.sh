@@ -37,6 +37,8 @@ cli() { # cli keygen|seal|open|sign|verify ...
             local to=(); for k in "$@"; do to+=(--to "$k"); done
             "$VPQC_CLI" rewrap --key "$sec" "${to[@]}" --aad "$aad" -o "$out" --force "$in" ;;
     decrypt-file) "$VPQC_CLI" decrypt --key "$1" --aad "$2" -o "$4" --force "$3" ;;
+    protect) VPQC_PASSPHRASE="$2" VPQC_PASSPHRASE_FILE= "$VPQC_CLI" protect "$1" --passphrase --kdf-memory 8 -o "$3" --force 2>/dev/null ;;
+    unprotect) VPQC_PASSPHRASE="$2" VPQC_PASSPHRASE_FILE= "$VPQC_CLI" unprotect "$1" -o "$3" --force ;;
   esac
 }
 py()   { "$PYTHON" "$ROOT/interop/drivers/py_driver.py" "$@"; }
@@ -189,6 +191,23 @@ for d in "${STREAM_IMPLS[@]}"; do
   done
 done
 echo "multi-recipient streaming: done"
+
+# Passphrase-protected secret keys (ADR-0013): every implementation protects a key, every
+# implementation recovers exactly the original key and rejects a wrong passphrase.
+for p in standard high; do
+  run cli keygen encrypt "$p" "$WORK/pk-$p"
+  for w in "${IMPLS[@]}"; do
+    rm -f "$WORK/pk.prot"
+    expect_ok run "$w" protect "$WORK/pk-$p.sec" "mật khẩu $p" "$WORK/pk.prot"
+    for r in "${IMPLS[@]}"; do
+      rm -f "$WORK/pk.plain"
+      expect_ok run "$r" unprotect "$WORK/pk.prot" "mật khẩu $p" "$WORK/pk.plain"
+      cmp -s "$WORK/pk.plain" "$WORK/pk-$p.sec" || { echo "FAIL: protected key differs ($w -> $r, $p)"; fail=$((fail+1)); }
+      expect_fail run "$r" unprotect "$WORK/pk.prot" "wrong" "$WORK/pk.bad"
+    done
+  done
+done
+echo "protected secret keys: done"
 
 # Tampered data is rejected everywhere.
 cp "$WORK/signature" "$WORK/bad.sig"; printf '\x00' | dd of="$WORK/bad.sig" bs=1 seek=100 conv=notrunc 2>/dev/null

@@ -133,3 +133,41 @@ function concat(parts) {
   }
   return out;
 }
+
+test("passphrase-protected secret keys", () => {
+  const keys = vpqc.generateSigningKeypair("standard");
+  const text = vpqc.protectSecretKey(keys.secretKey, "mật khẩu đủ dài", 8192);
+  assert.ok(text.startsWith("-----BEGIN VPQC PROTECTED SECRET KEY-----"));
+  assert.ok(vpqc.isProtectedSecretKey(text));
+  assert.ok(!vpqc.isProtectedSecretKey(vpqc.secretKeyToText(keys.secretKey)));
+  const back = vpqc.unprotectSecretKey(text, "mật khẩu đủ dài");
+  assert.deepEqual(back, keys.secretKey);
+  const msg = enc.encode("m");
+  vpqc.verify(keys.publicKey, msg, enc.encode("c"), vpqc.sign(back, msg, enc.encode("c")));
+  assert.throws(() => vpqc.unprotectSecretKey(text, "wrong"), { name: "VpqcError", code: "DECRYPTION_FAILED" });
+  assert.throws(() => vpqc.protectSecretKey(keys.secretKey, "x", 1024), { code: "INVALID_INPUT" });
+  assert.throws(() => vpqc.protectSecretKey(keys.secretKey, ""), { code: "INVALID_INPUT" });
+});
+
+test("interop: protected keys shared with the Rust CLI", { skip: !process.env.VPQC_CLI }, () => {
+  const { execFileSync } = require("node:child_process");
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vpqc-js-prot-"));
+  const env = { ...process.env, VPQC_PASSPHRASE: "shared passphrase 2026" };
+  delete env.VPQC_PASSPHRASE_FILE;
+  // CLI protects, Node unprotects.
+  execFileSync(process.env.VPQC_CLI, ["keygen", "--purpose", "encrypt", "--out", path.join(dir, "c"),
+    "--passphrase", "--kdf-memory", "8"], { env, stdio: "pipe" });
+  const sk = vpqc.unprotectSecretKey(fs.readFileSync(path.join(dir, "c.vpqc-secret"), "utf8"), "shared passphrase 2026");
+  const pk = vpqc.publicKeyFromText(fs.readFileSync(path.join(dir, "c.pub"), "utf8"));
+  assert.equal(dec.decode(vpqc.unseal(sk, vpqc.seal(pk, enc.encode("x"), new Uint8Array()), new Uint8Array())), "x");
+  // Node protects, CLI uses it.
+  const keys = vpqc.generateEncryptionKeypair("standard");
+  fs.writeFileSync(path.join(dir, "n.key"), vpqc.protectSecretKey(keys.secretKey, "shared passphrase 2026", 8192));
+  fs.writeFileSync(path.join(dir, "n.sealed"), vpqc.seal(keys.publicKey, enc.encode("from node"), new Uint8Array()));
+  const out = execFileSync(process.env.VPQC_CLI, ["open", "--key", path.join(dir, "n.key"), path.join(dir, "n.sealed")], { env });
+  assert.equal(dec.decode(out), "from node");
+  fs.rmSync(dir, { recursive: true });
+});

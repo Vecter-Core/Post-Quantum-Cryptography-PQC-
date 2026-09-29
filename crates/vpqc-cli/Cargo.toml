@@ -19,6 +19,7 @@ vpqc-scan.workspace = true
 vpqc-jose.workspace = true
 vpqc-cose.workspace = true
 base64.workspace = true
+rpassword.workspace = true
 vpqc-x509.workspace = true
 vpqc-ssh.workspace = true
 zeroize.workspace = true

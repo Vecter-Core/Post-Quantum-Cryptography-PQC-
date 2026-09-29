@@ -8,16 +8,17 @@
 //!   [`vpqc_buf_free`], which also zeroizes the memory (so secret keys and plaintexts are wiped).
 //! * Inputs are `(ptr, len)` pairs. `ptr` may be null only when `len` is 0.
 //! * Keys and signatures are the binary encodings from `vpqc-format` (self-describing).
-//! * The ABI is versioned: [`vpqc_abi_version`] returns `major << 16 | minor`.
+//! * The ABI is versioned: [`vpqc_abi_version`] returns `major << 16 | minor`. 1.1 added the
+//!   protected secret key functions (ADR-0013).
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
-use vpqc::{AlgorithmId, Error, Profile, encryption, keys, signing};
+use vpqc::{AlgorithmId, Error, Profile, encryption, keys, protect, signing};
 use zeroize::Zeroize;
 
 /// ABI version: major in the high 16 bits, minor in the low 16 bits.
-const ABI_VERSION: u32 = 1 << 16;
+const ABI_VERSION: u32 = (1 << 16) | 1;
 
 /// Success.
 pub const VPQC_OK: i32 = 0;
@@ -474,6 +475,98 @@ pub unsafe extern "C" fn vpqc_key_from_text(
         unsafe { put(out, bytes) };
         Ok(())
     })
+}
+
+/// Protect a binary secret key under a passphrase (ADR-0013: Argon2id, XChaCha20-Poly1305).
+/// Writes the armored text (`-----BEGIN VPQC PROTECTED SECRET KEY-----`, no trailing NUL).
+/// `memory_kib` is the Argon2id memory: 0 for the default (64 MiB), else 8192 to 1048576.
+/// The passphrase is taken as bytes (UTF-8 recommended) and must not be empty.
+///
+/// # Safety
+/// Every `(ptr, len)` pair must describe readable memory (null allowed only for length 0);
+/// `out` must be valid for a write of one `vpqc_buf`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vpqc_secret_key_protect(
+    secret_key: *const u8,
+    secret_key_len: usize,
+    passphrase: *const u8,
+    passphrase_len: usize,
+    memory_kib: u32,
+    out: *mut vpqc_buf,
+) -> i32 {
+    // SAFETY: `out` is null or valid per the contract.
+    unsafe { clear(out) };
+    if out.is_null() {
+        return VPQC_ERR_INVALID_ARGUMENT;
+    }
+    guard(|| {
+        // SAFETY: pointer/length pairs are valid per the contract.
+        let (sk, pass) = unsafe {
+            (
+                slice(secret_key, secret_key_len)?,
+                slice(passphrase, passphrase_len)?,
+            )
+        };
+        let mut params = protect::KdfParams::default();
+        if memory_kib != 0 {
+            if !(8 * 1024..=1024 * 1024).contains(&memory_kib) {
+                return Err(VPQC_ERR_INVALID_ARGUMENT);
+            }
+            params.memory_kib = memory_kib;
+        }
+        if pass.is_empty() {
+            return Err(VPQC_ERR_INVALID_ARGUMENT);
+        }
+        let sk = keys::secret_from_bytes(sk).map_err(|e| code(&e))?;
+        let bytes = protect::protect_with_passphrase(&sk, pass, params).map_err(|e| code(&e))?;
+        // SAFETY: `out` is non-null and valid.
+        unsafe { put(out, protect::to_text(&bytes).into_bytes()) };
+        Ok(())
+    })
+}
+
+/// Decrypt a passphrase-protected secret key (armored or binary) into the binary secret key
+/// encoding. A wrong passphrase or a modified key gives `VPQC_ERR_DECRYPTION_FAILED`; a key
+/// protected by a KMS/TPM (not a passphrase) gives `VPQC_ERR_INVALID_KEY`.
+///
+/// # Safety
+/// Every `(ptr, len)` pair must describe readable memory (null allowed only for length 0);
+/// `out` must be valid for a write of one `vpqc_buf`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vpqc_secret_key_unprotect(
+    data: *const u8,
+    data_len: usize,
+    passphrase: *const u8,
+    passphrase_len: usize,
+    out: *mut vpqc_buf,
+) -> i32 {
+    // SAFETY: `out` is null or valid per the contract.
+    unsafe { clear(out) };
+    if out.is_null() {
+        return VPQC_ERR_INVALID_ARGUMENT;
+    }
+    guard(|| {
+        // SAFETY: pointer/length pairs are valid per the contract.
+        let (data, pass) = unsafe { (slice(data, data_len)?, slice(passphrase, passphrase_len)?) };
+        let sk = protect::unprotect_with_passphrase(data, pass).map_err(|e| code(&e))?;
+        // SAFETY: `out` is non-null and valid.
+        unsafe { put(out, keys::secret_to_bytes(&sk)) };
+        Ok(())
+    })
+}
+
+/// Returns 1 if `data` is a protected secret key (armored or binary), 0 otherwise (including
+/// for invalid arguments). A quick check of the header, not a full parse.
+///
+/// # Safety
+/// `(data, data_len)` must describe readable memory (null allowed only if `data_len == 0`).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vpqc_secret_key_is_protected(data: *const u8, data_len: usize) -> i32 {
+    let r = catch_unwind(AssertUnwindSafe(|| {
+        // SAFETY: pointer/length pair is valid per the contract.
+        unsafe { slice(data, data_len) }.is_ok_and(protect::is_protected)
+    }));
+    i32::from(matches!(r, Ok(true)))
 }
 
 /// Raw KEM encapsulation to an encryption public key (for protocols and the Java JCA `KEM`).

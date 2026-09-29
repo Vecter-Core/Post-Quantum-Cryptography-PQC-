@@ -313,6 +313,60 @@ final class Native {
         }
     }
 
+    private static final FunctionDescriptor DESC_PROTECT = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS);
+
+    private static final FunctionDescriptor DESC_UNPROTECT = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS);
+
+    /** Protected secret key text (ABI 1.1). The passphrase copy in native memory is wiped. */
+    static String protectSecretKey(byte[] key, byte[] passphrase, int memoryKib) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(BUF);
+            out.fill((byte) 0);
+            MemorySegment k = copyIn(arena, key);
+            MemorySegment p = copyIn(arena, passphrase);
+            try {
+                check(invoke(handle("vpqc_secret_key_protect", DESC_PROTECT),
+                        k, (long) key.length, p, (long) passphrase.length, memoryKib, out));
+            } finally {
+                k.fill((byte) 0);
+                p.fill((byte) 0);
+            }
+            return new String(take(out), StandardCharsets.UTF_8);
+        }
+    }
+
+    /** Binary secret key from a passphrase-protected one (ABI 1.1). */
+    static byte[] unprotectSecretKey(byte[] data, byte[] passphrase) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment out = arena.allocate(BUF);
+            out.fill((byte) 0);
+            MemorySegment p = copyIn(arena, passphrase);
+            try {
+                check(invoke(handle("vpqc_secret_key_unprotect", DESC_UNPROTECT),
+                        copyIn(arena, data), (long) data.length, p, (long) passphrase.length, out));
+            } finally {
+                p.fill((byte) 0);
+            }
+            return take(out);
+        }
+    }
+
+    static boolean isProtectedSecretKey(byte[] data) {
+        try (Arena arena = Arena.ofConfined()) {
+            return invoke(handle("vpqc_secret_key_is_protected", FunctionDescriptor.of(
+                    ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG)),
+                    copyIn(arena, data), (long) data.length) == 1;
+        }
+    }
+
     static byte[] keyFromText(int kind, String text) {
         byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
         try (Arena arena = Arena.ofConfined()) {

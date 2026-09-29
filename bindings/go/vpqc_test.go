@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -267,5 +268,62 @@ func TestRewrapFile(t *testing.T) {
 	}
 	if _, err := RewrapFile(newSK, []PublicKey{newPK}, v1, filepath.Join(dir, "y"), nil); !errors.Is(err, ErrDecryption) {
 		t.Fatalf("non-recipient re-wrapped: %v", err)
+	}
+}
+
+func TestProtectedSecretKey(t *testing.T) {
+	pk, sk, _ := GenerateEncryptionKeypair(ProfileStandard)
+	pass := []byte("mật khẩu đủ dài")
+	text, err := sk.ProtectedText(pass, 8192)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !IsProtectedSecretKey([]byte(text)) || IsProtectedSecretKey(sk.Bytes()) {
+		t.Fatal("IsProtectedSecretKey")
+	}
+	back, err := SecretKeyFromProtected([]byte(text), pass)
+	if err != nil || !bytes.Equal(back.Bytes(), sk.Bytes()) {
+		t.Fatalf("round trip: %v", err)
+	}
+	sealed, _ := Seal(pk, []byte("x"), nil)
+	if got, err := Open(back, sealed, nil); err != nil || string(got) != "x" {
+		t.Fatalf("recovered key cannot decrypt: %v", err)
+	}
+	if _, err := SecretKeyFromProtected([]byte(text), []byte("wrong")); !errors.Is(err, ErrDecryption) {
+		t.Fatalf("wrong passphrase: %v", err)
+	}
+	if _, err := sk.ProtectedText(pass, 1024); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("tiny memory accepted: %v", err)
+	}
+	if _, err := sk.ProtectedText(nil, 0); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("empty passphrase accepted: %v", err)
+	}
+	if ABIVersion()&0xffff < 1 {
+		t.Fatalf("ABI minor %d lacks protected keys", ABIVersion()&0xffff)
+	}
+}
+
+func TestProtectedKeyFromCLI(t *testing.T) {
+	cli := os.Getenv("VPQC_CLI")
+	if cli == "" {
+		t.Skip("VPQC_CLI not set")
+	}
+	dir := t.TempDir()
+	cmd := exec.Command(cli, "keygen", "--purpose", "sign", "--out", filepath.Join(dir, "c"),
+		"--passphrase", "--kdf-memory", "8")
+	cmd.Env = append(os.Environ(), "VPQC_PASSPHRASE=shared passphrase 2026", "VPQC_PASSPHRASE_FILE=")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, "c.vpqc-secret"))
+	sk, err := SecretKeyFromProtected(data, []byte("shared passphrase 2026"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pubText, _ := os.ReadFile(filepath.Join(dir, "c.pub"))
+	pk, _ := PublicKeyFromText(string(pubText))
+	sig, err := Sign(sk, []byte("m"), []byte("ctx"))
+	if err != nil || Verify(pk, []byte("m"), []byte("ctx"), sig) != nil {
+		t.Fatalf("CLI-protected key does not sign: %v", err)
 	}
 }

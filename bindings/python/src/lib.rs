@@ -3,7 +3,7 @@
 
 use pyo3::prelude::*;
 use pyo3::types::{PyBytes, PyDict};
-use vpqc::{AlgorithmId, Error, Profile, encryption, keys, signing};
+use vpqc::{AlgorithmId, Error, Profile, encryption, keys, protect, signing};
 
 /// Map a vpqc error to the matching Python exception class in `vpqc.errors`.
 fn to_py(py: Python<'_>, e: Error) -> PyErr {
@@ -317,6 +317,46 @@ mod _vpqc {
     fn secret_key_from_text<'py>(py: Python<'py>, text: &str) -> PyResult<Bound<'py, PyBytes>> {
         let sk = keys::secret_from_text(text).map_err(|e| to_py(py, e))?;
         Ok(PyBytes::new(py, &keys::secret_to_bytes(&sk)))
+    }
+
+    /// Protect a binary secret key under a passphrase (Argon2id, XChaCha20-Poly1305;
+    /// ADR-0013). Returns the armored `VPQC PROTECTED SECRET KEY` text. Releases the GIL
+    /// while Argon2id runs.
+    #[pyfunction]
+    fn protect_secret_key(
+        py: Python<'_>,
+        secret_key: &[u8],
+        passphrase: &[u8],
+        memory_kib: u32,
+    ) -> PyResult<String> {
+        let sk = keys::secret_from_bytes(secret_key).map_err(|e| to_py(py, e))?;
+        let params = protect::KdfParams {
+            memory_kib,
+            ..protect::KdfParams::default()
+        };
+        let bytes = py
+            .detach(|| protect::protect_with_passphrase(&sk, passphrase, params))
+            .map_err(|e| to_py(py, e))?;
+        Ok(protect::to_text(&bytes))
+    }
+
+    /// Decrypt a passphrase-protected secret key (armored or binary) into its binary encoding.
+    #[pyfunction]
+    fn unprotect_secret_key<'py>(
+        py: Python<'py>,
+        data: &[u8],
+        passphrase: &[u8],
+    ) -> PyResult<Bound<'py, PyBytes>> {
+        let sk = py
+            .detach(|| protect::unprotect_with_passphrase(data, passphrase))
+            .map_err(|e| to_py(py, e))?;
+        Ok(PyBytes::new(py, &keys::secret_to_bytes(&sk)))
+    }
+
+    /// Is `data` a protected secret key (armored or binary)?
+    #[pyfunction]
+    fn is_protected_secret_key(data: &[u8]) -> bool {
+        protect::is_protected(data)
     }
 
     /// Describe an encoded key: `{"kind", "algorithm", "hybrid", "post_quantum", "size"}`.

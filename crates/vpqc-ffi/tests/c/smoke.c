@@ -72,6 +72,24 @@ int main(void) {
         puts("stream file: OK");
     }
 
+    {
+        /* Passphrase-protected secret key (ABI 1.1). */
+        vpqc_buf epk = {0}, esk = {0}, text = {0}, back = {0};
+        const char *pass = "correct horse battery staple";
+        CHECK((vpqc_abi_version() & 0xffff) >= VPQC_ABI_VERSION_MINOR);
+        CHECK(vpqc_encryption_keygen(VPQC_PROFILE_STANDARD, &epk, &esk) == VPQC_OK);
+        CHECK(vpqc_secret_key_protect(esk.ptr, esk.len, (const uint8_t *)pass, strlen(pass), 8192, &text) == VPQC_OK);
+        CHECK(vpqc_secret_key_is_protected(text.ptr, text.len) == 1);
+        CHECK(vpqc_secret_key_is_protected(esk.ptr, esk.len) == 0);
+        CHECK(vpqc_secret_key_unprotect(text.ptr, text.len, (const uint8_t *)pass, strlen(pass), &back) == VPQC_OK);
+        CHECK(back.len == esk.len && memcmp(back.ptr, esk.ptr, esk.len) == 0);
+        vpqc_buf_free(&back);
+        CHECK(vpqc_secret_key_unprotect(text.ptr, text.len, (const uint8_t *)"nope", 4, &back) == VPQC_ERR_DECRYPTION_FAILED);
+        CHECK(back.ptr == NULL);
+        vpqc_buf_free(&epk); vpqc_buf_free(&esk); vpqc_buf_free(&text);
+        puts("protected secret key: OK");
+    }
+
     CHECK(strcmp(vpqc_error_message(VPQC_ERR_DECRYPTION_FAILED), "decryption failed") == 0);
     puts("C smoke test OK");
     return 0;

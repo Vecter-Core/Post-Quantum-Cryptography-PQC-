@@ -45,6 +45,17 @@ vpqc encrypt --to alice.pub --to recovery.pub -o backup.tar.vpqc backup.tar   # 
 
 Kiểm tra tương tác giữa các thư viện: `interop/run.sh` (xem `docs/ROADMAP.md`).
 
+## Bảo vệ khoá bí mật (passphrase, KMS, TPM)
+
+```sh
+vpqc keygen --purpose encrypt --out alice --passphrase            # Argon2id + XChaCha20-Poly1305
+vpqc protect app.vpqc-secret --kms aws-kms:alias/vpqc -o app.key  # hoặc gcp-kms, vault-transit, systemd-creds
+vpqc decrypt --key app.key data.vpqc -o data                      # khoá được bảo vệ dùng như khoá thường
+```
+
+Khoá bí mật không còn phải nằm dạng rõ trên đĩa (ADR-0013); định dạng passphrase đã kiểm chéo
+với argon2-cffi + libsodium.
+
 ## Kiểm kê mật mã (migration)
 
 ```sh

@@ -9,12 +9,14 @@
 //! secret key : "VPQC" 01 04 alg_id:u16 key_len:u32           | key | crc4
 //! stream     : "VPQC" 01 05 kem_id:u16 aead_id:u8 chunk_log:u8 ct_len:u16 | kem_ct | chunks  (ADR-0007)
 //! multi      : "VPQC" 01 06 aead_id:u8 chunk_log:u8 n:u8 | n x stanza | mac | chunks      (ADR-0009)
+//! protected  : "VPQC" 01 07 method:u8 params_len:u16 params | nonce | ciphertext           (ADR-0013)
 //! ```
 //! All integers are big-endian. `crc4` is the first four bytes of SHA3-256 over the
 //! preceding bytes; it only catches typos and truncation and provides no security.
 
 mod armor;
 mod keys;
+pub mod protected;
 mod sealed;
 mod signature;
 mod stream;
@@ -39,6 +41,7 @@ pub(crate) mod kind {
     pub(crate) const SECRET_KEY: u8 = 4;
     pub(crate) const STREAM: u8 = 5;
     pub(crate) const MULTI_STREAM: u8 = 6;
+    pub(crate) const PROTECTED_SECRET_KEY: u8 = 7;
 }
 
 /// Minimal cursor over a byte slice with strict bounds checking.

@@ -131,6 +131,30 @@ func main() {
 		if _, err := vpqc.DecryptFile(sk, a[3], a[4], []byte(a[2])); err != nil {
 			die(err)
 		}
+	case "protect": // protect SECFILE PASSPHRASE OUT
+		sk, err := vpqc.SecretKeyFromText(string(read(a[1])))
+		if err != nil {
+			die(err)
+		}
+		text, err := sk.ProtectedText([]byte(a[2]), 8192)
+		if err != nil {
+			die(err)
+		}
+		if err := os.WriteFile(a[3], []byte(text), 0o600); err != nil {
+			die(err)
+		}
+	case "unprotect": // unprotect PROTFILE PASSPHRASE OUT
+		sk, err := vpqc.SecretKeyFromProtected(read(a[1]), []byte(a[2]))
+		if err != nil {
+			die(err)
+		}
+		text, err := sk.Text()
+		if err != nil {
+			die(err)
+		}
+		if err := os.WriteFile(a[3], []byte(text), 0o600); err != nil {
+			die(err)
+		}
 	default:
 		die(fmt.Errorf("unknown command %q", a[0]))
 	}
