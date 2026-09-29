@@ -34,7 +34,7 @@
 | Công cụ di trú `vpqc scan`: kiểm kê mật mã (mã nguồn, cấu hình, chứng chỉ X.509, khoá), xếp hạng T0-T4, xuất **CBOM CycloneDX 1.6** | Xong | `crates/vpqc-scan`; chứng chỉ/khoá phân tích chính xác, mã nguồn theo mẫu (heuristic, ghi rõ); CBOM **hợp lệ theo schema chính thức**; `--fail-on` để chặn trong CI; không bao giờ in khoá |
 | `vpqc lint` (gợi ý sửa mã), chế độ song song (shadow mode), kill-switch profile | **Chưa** | `scan` đã có lời khuyên theo tầng; phần còn lại là giai đoạn 4 |
 | .NET, Swift, Kotlin (JCA), Dart | **Chưa** | Chưa có toolchain trong môi trường này để kiểm chứng; dùng chung C ABI |
-| Phát hành gói (PyPI wheel đa nền tảng, npm, thư viện C dựng sẵn cho Go) | **Chưa** | Hiện phải build từ mã nguồn; CI đã khai báo nhưng mới chạy thử trên Linux |
+| Phát hành gói (PyPI wheel đa nền tảng, npm, thư viện C dựng sẵn cho Go) | **Chưa** | Hiện phải build từ mã nguồn. CI GitHub xanh: Rust trên Ubuntu/macOS/Windows, MSRV 1.85 cho lõi, `cargo deny`, và job bindings + interop trên Ubuntu. Các binding chưa được thử trên macOS/Windows |
 | Kiểm toán bên ngoài | **Chưa** | **Chưa dùng cho bí mật thật** |
 
 Ghi chú lệch so với sơ đồ mục 3: `vpqc-policy` hiện nằm trong `vpqc-core` (module `profile`);
