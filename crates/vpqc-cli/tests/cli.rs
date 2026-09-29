@@ -519,3 +519,112 @@ fn encrypt_to_several_recipients() {
     ]);
     assert!(!dup.status.success());
 }
+
+#[test]
+fn envelope_key_rotation_with_rewrap() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["old", "new"] {
+        ok(&[
+            "keygen",
+            "--purpose",
+            "encrypt",
+            "--out",
+            p(&dir.path().join(name)),
+        ]);
+    }
+    let f = |n: &str| dir.path().join(n);
+    std::fs::write(f("data"), b"rotate the key, keep the data").unwrap();
+    ok(&[
+        "encrypt",
+        "--envelope",
+        "--to",
+        p(&f("old.pub")),
+        "--aad",
+        "a",
+        "-o",
+        p(&f("v1")),
+        p(&f("data")),
+    ]);
+    // A plain single-recipient file cannot be re-wrapped.
+    ok(&[
+        "encrypt",
+        "--to",
+        p(&f("old.pub")),
+        "--aad",
+        "a",
+        "-o",
+        p(&f("plain")),
+        p(&f("data")),
+    ]);
+    let r = vpqc(&[
+        "rewrap",
+        "--key",
+        p(&f("old.vpqc-secret")),
+        "--to",
+        p(&f("new.pub")),
+        "--aad",
+        "a",
+        "-o",
+        p(&f("x")),
+        p(&f("plain")),
+    ]);
+    assert!(!r.status.success() && String::from_utf8_lossy(&r.stderr).contains("re-encrypt"));
+
+    ok(&[
+        "rewrap",
+        "--key",
+        p(&f("old.vpqc-secret")),
+        "--to",
+        p(&f("new.pub")),
+        "--aad",
+        "a",
+        "-o",
+        p(&f("v2")),
+        p(&f("v1")),
+    ]);
+    ok(&[
+        "decrypt",
+        "--key",
+        p(&f("new.vpqc-secret")),
+        "--aad",
+        "a",
+        "-o",
+        p(&f("out")),
+        p(&f("v2")),
+    ]);
+    assert_eq!(
+        std::fs::read(f("out")).unwrap(),
+        b"rotate the key, keep the data"
+    );
+    assert!(
+        !vpqc(&[
+            "decrypt",
+            "--key",
+            p(&f("old.vpqc-secret")),
+            "--aad",
+            "a",
+            "-o",
+            p(&f("o2")),
+            p(&f("v2"))
+        ])
+        .status
+        .success()
+    );
+    // Refuses to overwrite without --force.
+    assert!(
+        !vpqc(&[
+            "rewrap",
+            "--key",
+            p(&f("old.vpqc-secret")),
+            "--to",
+            p(&f("new.pub")),
+            "--aad",
+            "a",
+            "-o",
+            p(&f("v2")),
+            p(&f("v1"))
+        ])
+        .status
+        .success()
+    );
+}

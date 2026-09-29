@@ -94,6 +94,10 @@ enum Command {
         /// Recipient public key file (repeatable).
         #[arg(long, required = true)]
         to: Vec<PathBuf>,
+        /// Use the envelope (multi-recipient) format even for one recipient, so that the
+        /// recipients can later be changed with `vpqc rewrap` (e.g. key rotation).
+        #[arg(long)]
+        envelope: bool,
         /// Authenticated context; must be given again to decrypt.
         #[arg(long, default_value = "")]
         aad: String,
@@ -105,6 +109,28 @@ enum Command {
         force: bool,
         /// Input file (default: stdin).
         input: Option<PathBuf>,
+    },
+    /// Change the recipients of an envelope (a file encrypted with several --to, or with
+    /// --envelope) without re-encrypting its data. You must be a current recipient. Removing a
+    /// recipient does not revoke data they already decrypted or the file key they know.
+    Rewrap {
+        /// Your secret key (a current recipient).
+        #[arg(long)]
+        key: PathBuf,
+        /// New recipient public key file (repeatable); the complete new list.
+        #[arg(long, required = true)]
+        to: Vec<PathBuf>,
+        /// Authenticated context used when encrypting.
+        #[arg(long, default_value = "")]
+        aad: String,
+        /// Output file.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Overwrite an existing output file.
+        #[arg(long)]
+        force: bool,
+        /// Input file.
+        input: PathBuf,
     },
     /// Decrypt a stream produced by `encrypt`. With `-o FILE`, the file appears only if the
     /// whole stream verifies; to stdout, output must be discarded if the exit code is non-zero.
@@ -350,21 +376,16 @@ fn run(cli: Cli) -> CliResult {
         }
         Command::Encrypt {
             to,
+            envelope,
             aad,
             output,
             force,
             input,
         } => {
-            let pks = to
-                .iter()
-                .map(|p| {
-                    keys::public_from_bytes(&read_key_bytes(p, "VPQC PUBLIC KEY")?)
-                        .map_err(|e| format!("{}: {e}", p.display()))
-                })
-                .collect::<Result<Vec<_>, String>>()?;
+            let pks = read_public_keys(&to)?;
             let refs: Vec<_> = pks.iter().collect();
             let aad = aad.as_bytes();
-            if let [pk] = refs[..] {
+            if let ([pk], false) = (&refs[..], envelope) {
                 // One recipient: the single-recipient format (ADR-0007).
                 run_stream(
                     true,
@@ -384,6 +405,28 @@ fn run(cli: Cli) -> CliResult {
                     |r, o| vpqc::stream::encrypt_to_file_multi(&refs, aad, r, o),
                 )
             }
+        }
+        Command::Rewrap {
+            key,
+            to,
+            aad,
+            output,
+            force,
+            input,
+        } => {
+            let sk =
+                keys::secret_from_bytes(&read_key_bytes(&key, "VPQC SECRET KEY")?).map_err(err)?;
+            let pks = read_public_keys(&to)?;
+            let refs: Vec<_> = pks.iter().collect();
+            if output.exists() && !force {
+                return Err(format!(
+                    "{}: already exists (use --force to overwrite)",
+                    output.display()
+                ));
+            }
+            vpqc::stream::rewrap_file(&sk, aad.as_bytes(), &refs, &input, &output)
+                .map(|_| ())
+                .map_err(|e| stream_error(&e))
         }
         Command::Decrypt {
             key,
@@ -499,6 +542,16 @@ fn run(cli: Cli) -> CliResult {
         Command::Jws { command } => jose::jws(command),
         Command::Jwt { command } => jose::jwt(command),
     }
+}
+
+fn read_public_keys(paths: &[PathBuf]) -> Result<Vec<vpqc::PublicKey>, String> {
+    paths
+        .iter()
+        .map(|p| {
+            keys::public_from_bytes(&read_key_bytes(p, "VPQC PUBLIC KEY")?)
+                .map_err(|e| format!("{}: {e}", p.display()))
+        })
+        .collect()
 }
 
 fn is_stdio(p: &Option<PathBuf>) -> bool {

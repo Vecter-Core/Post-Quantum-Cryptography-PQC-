@@ -33,6 +33,9 @@ cli() { # cli keygen|seal|open|sign|verify ...
     encrypt-file-multi) local aad="$1" in="$2" out="$3"; shift 3
             local to=(); for k in "$@"; do to+=(--to "$k"); done
             "$VPQC_CLI" encrypt "${to[@]}" --aad "$aad" -o "$out" --force "$in" ;;
+    rewrap-file) local sec="$1" aad="$2" in="$3" out="$4"; shift 4
+            local to=(); for k in "$@"; do to+=(--to "$k"); done
+            "$VPQC_CLI" rewrap --key "$sec" "${to[@]}" --aad "$aad" -o "$out" --force "$in" ;;
     decrypt-file) "$VPQC_CLI" decrypt --key "$1" --aad "$2" -o "$4" --force "$3" ;;
   esac
 }
@@ -139,13 +142,13 @@ for d in "${STREAM_IMPLS[@]}"; do
 done
 echo "streaming: done"
 
-# Multi-recipient streams (ADR-0009): the CLI, Python and Go encrypt to three recipients of
+# Multi-recipient streams (ADR-0009): every implementation encrypts to three recipients of
 # different profiles; every implementation decrypts with each recipient key and rejects an
-# outsider (implementations without a multi-recipient encrypt API still decrypt: the format
-# is handled by the shared decryptor).
+# outsider. Then every implementation re-wraps (drops two recipients, adds the outsider)
+# without re-encrypting, and every implementation checks the new recipient list.
 for p in standard high cnsa2; do run cli keygen encrypt "$p" "$WORK/mr-$p"; done
 run cli keygen encrypt standard "$WORK/mr-out"
-for e in cli py go; do
+for e in "${STREAM_IMPLS[@]}"; do
   rm -f "$WORK/mr.vpqc"
   expect_ok run "$e" encrypt-file-multi "team" "$WORK/big.bin" "$WORK/mr.vpqc" \
     "$WORK/mr-standard.pub" "$WORK/mr-high.pub" "$WORK/mr-cnsa2.pub"
@@ -156,6 +159,17 @@ for e in cli py go; do
       cmp -s "$WORK/mr.out" "$WORK/big.bin" || { echo "FAIL: multi-recipient plaintext differs ($e -> $d, $p)"; fail=$((fail+1)); }
     done
     expect_fail run "$d" decrypt-file "$WORK/mr-out.sec" "team" "$WORK/mr.vpqc" "$WORK/mr.bad"
+  done
+done
+for r in "${STREAM_IMPLS[@]}"; do
+  rm -f "$WORK/mr-re.vpqc"
+  expect_ok run "$r" rewrap-file "$WORK/mr-high.sec" "team" "$WORK/mr.vpqc" "$WORK/mr-re.vpqc" \
+    "$WORK/mr-cnsa2.pub" "$WORK/mr-out.pub"
+  for d in "${STREAM_IMPLS[@]}"; do
+    rm -f "$WORK/mr.out"
+    expect_ok run "$d" decrypt-file "$WORK/mr-out.sec" "team" "$WORK/mr-re.vpqc" "$WORK/mr.out"
+    cmp -s "$WORK/mr.out" "$WORK/big.bin" || { echo "FAIL: re-wrapped plaintext differs ($r -> $d)"; fail=$((fail+1)); }
+    expect_fail run "$d" decrypt-file "$WORK/mr-standard.sec" "team" "$WORK/mr-re.vpqc" "$WORK/mr.bad"
   done
 done
 "$PYTHON" - "$ROOT/crates/vpqc/tests/data/multistream-v1.json" "$WORK" <<'PY'

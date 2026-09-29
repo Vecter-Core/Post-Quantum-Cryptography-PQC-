@@ -46,6 +46,12 @@ try {
         case 'encrypt-file': // encrypt-file PUBFILE AAD IN OUT
             Vpqc::encryptFile(PublicKey::fromText(file_get_contents($a[0])), $a[2], $a[3], $a[1]);
             break;
+        case 'encrypt-file-multi': // encrypt-file-multi AAD IN OUT PUBFILE...
+            Vpqc::encryptFileMulti(array_map(fn ($f) => PublicKey::fromText(file_get_contents($f)), array_slice($a, 3)), $a[1], $a[2], $a[0]);
+            break;
+        case 'rewrap-file': // rewrap-file SECFILE AAD IN OUT PUBFILE...
+            Vpqc::rewrapFile(SecretKey::fromText(file_get_contents($a[0])), array_map(fn ($f) => PublicKey::fromText(file_get_contents($f)), array_slice($a, 4)), $a[2], $a[3], $a[1]);
+            break;
         case 'decrypt-file': // decrypt-file SECFILE AAD IN OUT
             Vpqc::decryptFile(SecretKey::fromText(file_get_contents($a[0])), $a[2], $a[3], $a[1]);
             break;

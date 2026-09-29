@@ -371,3 +371,118 @@ fn regression_vector() {
     assert_eq!(decrypt(&a.secret, b"vector", &ct).unwrap(), pt);
     assert_eq!(decrypt(&b.secret, b"vector", &ct).unwrap(), pt);
 }
+
+#[test]
+fn rewrap_changes_recipients_without_touching_the_body() {
+    let ks = keys(&[
+        Profile::Standard,
+        Profile::High,
+        Profile::Cnsa2,
+        Profile::Standard,
+    ]);
+    let (a, b, c, outsider) = (&ks[0], &ks[1], &ks[2], &ks[3]);
+    let pt = data(3 * CHUNK + 11);
+    let ct = encrypt(&[a, b], b"ctx", &pt);
+
+    // A re-wraps for {A, C}: B is dropped, C added.
+    let mut out = Vec::new();
+    let body = stream::rewrap(
+        &a.secret,
+        b"ctx",
+        &[&a.public, &c.public],
+        &ct[..],
+        &mut out,
+    )
+    .unwrap();
+    let (old_hl, new_hl) = (header_len(&ct), header_len(&out));
+    assert_eq!(body as usize, ct.len() - old_hl);
+    assert_eq!(
+        &out[new_hl..],
+        &ct[old_hl..],
+        "body must be copied unchanged"
+    );
+    assert_eq!(decrypt(&a.secret, b"ctx", &out).unwrap(), pt);
+    assert_eq!(decrypt(&c.secret, b"ctx", &out).unwrap(), pt);
+    assert!(is_decryption_failure(
+        &decrypt(&b.secret, b"ctx", &out).unwrap_err()
+    ));
+    // The original is untouched and still valid for its recipients.
+    assert_eq!(decrypt(&b.secret, b"ctx", &ct).unwrap(), pt);
+
+    // Only a current recipient, with the right context, can re-wrap.
+    assert!(
+        stream::rewrap(
+            &outsider.secret,
+            b"ctx",
+            &[&outsider.public],
+            &ct[..],
+            Vec::new()
+        )
+        .is_err()
+    );
+    assert!(stream::rewrap(&c.secret, b"ctx", &[&c.public], &ct[..], Vec::new()).is_err());
+    assert!(stream::rewrap(&a.secret, b"other", &[&a.public], &ct[..], Vec::new()).is_err());
+    // A modified header is rejected (MAC), and recipient-list rules apply.
+    let mut bad = ct.clone();
+    bad[20] ^= 1;
+    assert!(stream::rewrap(&a.secret, b"ctx", &[&a.public], &bad[..], Vec::new()).is_err());
+    assert!(stream::rewrap(&a.secret, b"ctx", &[], &ct[..], Vec::new()).is_err());
+    assert!(
+        stream::rewrap(
+            &a.secret,
+            b"ctx",
+            &[&c.public, &c.public],
+            &ct[..],
+            Vec::new()
+        )
+        .is_err()
+    );
+
+    // Single-recipient streams have no file key to re-wrap.
+    let mut e = Encryptor::with_options(&a.public, b"ctx", Vec::new(), SMALL).unwrap();
+    e.write_all(b"single").unwrap();
+    let single = e.finish().unwrap();
+    let err = stream::rewrap(&a.secret, b"ctx", &[&c.public], &single[..], Vec::new()).unwrap_err();
+    assert!(matches!(stream::crypto_error(&err), Some(Error::Format(_))));
+
+    // Re-wrapping a one-recipient envelope (kind 6) works, e.g. for key rotation.
+    let rotatable = encrypt(&[a], b"ctx", b"rotate me");
+    let mut rotated = Vec::new();
+    stream::rewrap(
+        &a.secret,
+        b"ctx",
+        &[&c.public],
+        &rotatable[..],
+        &mut rotated,
+    )
+    .unwrap();
+    assert_eq!(decrypt(&c.secret, b"ctx", &rotated).unwrap(), b"rotate me");
+    assert!(decrypt(&a.secret, b"ctx", &rotated).is_err());
+}
+
+#[test]
+fn rewrap_file_is_atomic() {
+    let dir = tempfile::tempdir().unwrap();
+    let ks = keys(&[Profile::Standard, Profile::Standard]);
+    let (src, enc, re) = (
+        dir.path().join("in"),
+        dir.path().join("enc"),
+        dir.path().join("re"),
+    );
+    std::fs::write(&src, data(9000)).unwrap();
+    stream::encrypt_file_multi(&[&ks[0].public], b"f", &src, &enc).unwrap();
+    stream::rewrap_file(&ks[0].secret, b"f", &[&ks[1].public], &enc, &re).unwrap();
+    let out = dir.path().join("out");
+    stream::decrypt_file(&ks[1].secret, b"f", &re, &out).unwrap();
+    assert_eq!(std::fs::read(&out).unwrap(), data(9000));
+    // A failed re-wrap leaves no output behind.
+    let bad = dir.path().join("bad");
+    assert!(stream::rewrap_file(&ks[1].secret, b"f", &[&ks[0].public], &enc, &bad).is_err());
+    assert!(!bad.exists());
+    assert!(std::fs::read_dir(dir.path()).unwrap().all(|e| {
+        !e.unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".vpqc-tmp")
+    }));
+}

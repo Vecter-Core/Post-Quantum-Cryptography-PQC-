@@ -33,6 +33,7 @@ __all__ = [
     "is_valid",
     "encrypt_file",
     "decrypt_file",
+    "rewrap_file",
     "StreamEncryptor",
     "StreamDecryptor",
     "profiles",
@@ -196,15 +197,39 @@ def encrypt_file(
     output_path: PathLike,
     *,
     aad: BytesLike = b"",
+    envelope: bool = False,
 ) -> int:
     """Encrypt a file of any size in constant memory (streaming format, ADR-0007).
 
     Pass a list of public keys to encrypt for several recipients (up to 32, e.g. a user key
-    and a recovery key); each can decrypt with their own secret key (ADR-0009).
+    and a recovery key); each can decrypt with their own secret key (ADR-0009). With
+    ``envelope=True`` a single recipient also gets that format, so the recipients can later be
+    changed with :func:`rewrap_file` (key rotation).
     The output file is replaced atomically. Returns the number of plaintext bytes.
     Raises ``OSError`` for file errors.
     """
-    return _vpqc.encrypt_file(_recipients(public_key), _b(aad), os.fspath(input_path), os.fspath(output_path))
+    return _vpqc.encrypt_file(
+        _recipients(public_key), _b(aad), os.fspath(input_path), os.fspath(output_path), envelope
+    )
+
+
+def rewrap_file(
+    secret_key: SecretKey,
+    public_key: Union["PublicKey", Sequence["PublicKey"]],
+    input_path: PathLike,
+    output_path: PathLike,
+    *,
+    aad: BytesLike = b"",
+) -> int:
+    """Change the recipients of a multi-recipient file without re-encrypting its data.
+
+    ``secret_key`` must belong to a current recipient; the output is readable by exactly the
+    new recipients. Removing someone does not revoke what they already decrypted: re-encrypt
+    to revoke. Returns the number of body bytes copied.
+    """
+    return _vpqc.rewrap_file(
+        secret_key.data, _recipients(public_key), _b(aad), os.fspath(input_path), os.fspath(output_path)
+    )
 
 
 def decrypt_file(

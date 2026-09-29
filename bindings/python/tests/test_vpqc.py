@@ -197,3 +197,22 @@ def test_multiple_recipients(tmp_path):
         vpqc.encrypt_file([], src, enc)
     with pytest.raises(vpqc.VpqcError):
         vpqc.encrypt_file([user.public, user.public], src, tmp_path / "dup")
+
+
+def test_rewrap_for_key_rotation(tmp_path):
+    old, new = vpqc.generate_encryption_keypair(), vpqc.generate_encryption_keypair("high")
+    src, v1, v2 = tmp_path / "in", tmp_path / "v1", tmp_path / "v2"
+    src.write_bytes(b"x" * 100_000)
+    vpqc.encrypt_file(old.public, src, v1, aad=b"k", envelope=True)
+    vpqc.rewrap_file(old.secret, new.public, v1, v2, aad=b"k")
+    vpqc.decrypt_file(new.secret, v2, tmp_path / "out", aad=b"k")
+    assert (tmp_path / "out").read_bytes() == b"x" * 100_000
+    with pytest.raises(vpqc.DecryptionError):
+        vpqc.decrypt_file(old.secret, v2, tmp_path / "o2", aad=b"k")
+    # Not a recipient: cannot re-wrap.
+    with pytest.raises(vpqc.DecryptionError):
+        vpqc.rewrap_file(vpqc.generate_encryption_keypair().secret, new.public, v1, tmp_path / "v3", aad=b"k")
+    # A plain single-recipient file cannot be re-wrapped.
+    vpqc.encrypt_file(old.public, src, tmp_path / "plain", aad=b"k")
+    with pytest.raises(vpqc.VpqcError):
+        vpqc.rewrap_file(old.secret, new.public, tmp_path / "plain", tmp_path / "v4", aad=b"k")

@@ -96,4 +96,24 @@ class VpqcTest < Minitest::Test
       assert_raises(Vpqc::IOError) { Vpqc.encrypt_file(k.public, "#{dir}/missing", "#{dir}/o") }
     end
   end
+
+  def test_multi_recipient_and_rewrap
+    require "tmpdir"
+    Dir.mktmpdir do |dir|
+      a = Vpqc.generate_encryption_keypair
+      b = Vpqc.generate_encryption_keypair(:high)
+      c = Vpqc.generate_encryption_keypair(:cnsa2)
+      File.binwrite("#{dir}/in", "for the team")
+      Vpqc.encrypt_file_multi([a.public, b.public], "#{dir}/in", "#{dir}/enc", aad: "t")
+      [a, b].each_with_index do |k, i|
+        Vpqc.decrypt_file(k.secret, "#{dir}/enc", "#{dir}/out#{i}", aad: "t")
+        assert_equal "for the team", File.binread("#{dir}/out#{i}")
+      end
+      assert_raises(Vpqc::DecryptionError) { Vpqc.decrypt_file(c.secret, "#{dir}/enc", "#{dir}/x", aad: "t") }
+      Vpqc.rewrap_file(b.secret, [b.public, c.public], "#{dir}/enc", "#{dir}/re", aad: "t")
+      Vpqc.decrypt_file(c.secret, "#{dir}/re", "#{dir}/out2", aad: "t")
+      assert_equal "for the team", File.binread("#{dir}/out2")
+      assert_raises(Vpqc::DecryptionError) { Vpqc.decrypt_file(a.secret, "#{dir}/re", "#{dir}/y", aad: "t") }
+    end
+  end
 end

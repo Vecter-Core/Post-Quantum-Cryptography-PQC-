@@ -130,9 +130,20 @@ vpqc encrypt --to alice.pub --to recovery.pub --aad backup/2026-09 -o db.vpqc db
 vpqc.encrypt_file([alice.public, recovery.public], "db.dump", "db.vpqc", aad=b"backup/2026-09")
 ```
 
-Go: `EncryptFileMulti`, C: `vpqc_encrypt_file_multi`. Mọi thư viện đều **giải mã** được tệp
-nhiều người nhận mà không cần đổi code. Người nhận không chứng minh được ai đã tạo tệp: nếu
-nguồn gốc quan trọng, hãy ký tệp.
+Có ở mọi ngôn ngữ (Go `EncryptFileMulti`, Java/PHP `encryptFileMulti`, Ruby
+`encrypt_file_multi`, JS `new StreamEncryptor([k1, k2], aad)`, C `vpqc_encrypt_file_multi`).
+Người nhận không chứng minh được ai đã tạo tệp: nếu nguồn gốc quan trọng, hãy ký tệp.
+
+**Xoay khoá / đổi người nhận không mã hoá lại dữ liệu** (`rewrap`, kiểu "re-wrap data key"
+của KMS). Một người nhận hiện tại tạo tệp mới cho danh sách người nhận mới; thân tệp giữ nguyên:
+
+```sh
+vpqc encrypt --envelope --to key-2026.pub -o db.vpqc db.dump      # --envelope: để xoay khoá được
+vpqc rewrap --key key-2026.vpqc-secret --to key-2027.pub -o db.2027.vpqc db.vpqc
+```
+
+Bỏ một người nhận chỉ ngăn họ mở **tệp mới**; họ có thể đã giữ tệp cũ hoặc khoá tệp. Muốn thu
+hồi thật sự dữ liệu họ từng đọc được thì phải mã hoá lại.
 
 **Quy tắc quan trọng:** khi giải mã ra **tệp**, tệp đích chỉ xuất hiện nếu toàn bộ luồng hợp
 lệ. Khi giải mã theo kiểu luồng (stdout, `StreamDecryptor`, `Decryptor`), các phần bản rõ được

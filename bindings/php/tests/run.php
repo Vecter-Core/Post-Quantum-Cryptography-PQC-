@@ -104,6 +104,16 @@ check(file_get_contents("$dir/out") === $data, 'file round trip');
 throws(DecryptionException::class, fn () => Vpqc::decryptFile($k->secret, "$dir/enc", "$dir/bad", 'other'), 'file wrong aad');
 check(!file_exists("$dir/bad"), 'no output after failed decryption');
 throws(VpqcException::class, fn () => Vpqc::encryptFile($k->public, "$dir/missing", "$dir/x"), 'missing input');
+// Several recipients, then a re-wrap that drops one and adds another.
+$r = Vpqc::generateEncryptionKeypair(Profile::High);
+$o = Vpqc::generateEncryptionKeypair();
+check(Vpqc::encryptFileMulti([$k->public, $r->public], "$dir/in", "$dir/menc", 'm') === strlen($data), 'encryptFileMulti');
+check(Vpqc::decryptFile($r->secret, "$dir/menc", "$dir/mout", 'm') === strlen($data), 'second recipient decrypts');
+throws(DecryptionException::class, fn () => Vpqc::decryptFile($o->secret, "$dir/menc", "$dir/mbad", 'm'), 'outsider rejected');
+Vpqc::rewrapFile($k->secret, [$r->public, $o->public], "$dir/menc", "$dir/mre", 'm');
+check(Vpqc::decryptFile($o->secret, "$dir/mre", "$dir/mout2", 'm') === strlen($data), 'added recipient decrypts');
+throws(DecryptionException::class, fn () => Vpqc::decryptFile($k->secret, "$dir/mre", "$dir/mbad2", 'm'), 'removed recipient rejected');
+throws(VpqcException::class, fn () => Vpqc::encryptFileMulti([], "$dir/in", "$dir/none", 'm'), 'no recipients');
 array_map('unlink', glob("$dir/*"));
 rmdir($dir);
 

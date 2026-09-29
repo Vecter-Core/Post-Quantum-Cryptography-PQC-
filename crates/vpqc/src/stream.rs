@@ -209,16 +209,7 @@ impl<W: Write> Encryptor<W> {
         options: StreamOptions,
         rng: &mut dyn RandomSource,
     ) -> io::Result<Self> {
-        if recipients.is_empty() || recipients.len() > MAX_RECIPIENTS {
-            return Err(invalid_input(Error::Format(
-                "between 1 and 32 recipients required",
-            )));
-        }
-        for (i, a) in recipients.iter().enumerate() {
-            if recipients[..i].iter().any(|b| b.as_bytes() == a.as_bytes()) {
-                return Err(invalid_input(Error::Format("duplicate recipient")));
-            }
-        }
+        check_recipients(recipients)?;
         let mut file_key = Zeroizing::new([0u8; 32]);
         rng.fill(&mut *file_key).map_err(invalid_input)?;
         let keys = vec![*file_key; recipients.len()];
@@ -266,35 +257,17 @@ impl<W: Write> Encryptor<W> {
         options: StreamOptions,
         rng: &mut dyn RandomSource,
     ) -> io::Result<Self> {
-        let mut stanzas = Vec::with_capacity(recipients.len());
-        for (recipient, file_key) in recipients.iter().zip(wrapped_keys) {
-            let AlgorithmId::Kem(kem) = recipient.algorithm() else {
-                return Err(invalid_input(Error::AlgorithmMismatch));
-            };
-            let (kem_ciphertext, ss) = registry::kem(kem)
-                .and_then(|k| k.encapsulate(recipient, rng))
-                .map_err(invalid_input)?;
-            let wrapped = wrap_key(kem, &kem_ciphertext, ss.expose())?
-                .encrypt(&Nonce::default(), &file_key[..])
-                .map_err(|_| invalid_input(Error::Backend("AEAD encryption failed")))?;
-            stanzas.push(RecipientStanza {
-                kem,
-                kem_ciphertext,
-                wrapped_key: wrapped.try_into().expect("32-byte key + 16-byte tag"),
-            });
-        }
-        let mut header = MultiStreamHeader {
-            aead: AeadId::ChaCha20Poly1305,
-            chunk_log: options.chunk_log,
-            recipients: stanzas,
-            mac: [0; HEADER_MAC_LEN],
-        };
-        let unauthenticated = header.encode_unauthenticated().map_err(invalid_input)?;
-        header.mac = header_mac(&unauthenticated, aad, mac_key);
-        let raw = header.encode().map_err(invalid_input)?;
-        let cipher = aead(&kdf(MULTI_KDF_LABEL, &raw, aad, payload_key))?;
+        let raw = multi_header(
+            recipients,
+            wrapped_keys,
+            mac_key,
+            aad,
+            options.chunk_log,
+            rng,
+        )?;
+        let cipher = payload_cipher(&raw, aad, payload_key)?;
         inner.write_all(&raw)?;
-        let chunk = header.chunk_size();
+        let chunk = 1usize << options.chunk_log;
         Ok(Self {
             inner,
             cipher,
@@ -395,7 +368,7 @@ impl ChunkOpener {
             }
             AnyStreamHeader::Multi(h) => {
                 let file_key = unwrap_file_key(secret, aad, h, raw)?;
-                aead(&kdf(MULTI_KDF_LABEL, raw, aad, &*file_key))?
+                payload_cipher(raw, aad, &file_key)?
             }
         };
         Ok(Self {
@@ -420,6 +393,70 @@ impl ChunkOpener {
         self.counter = self.counter.checked_add(1).ok_or_else(decryption_failed)?;
         Ok(pt)
     }
+}
+
+fn check_recipients(recipients: &[&PublicKey]) -> io::Result<()> {
+    if recipients.is_empty() || recipients.len() > MAX_RECIPIENTS {
+        return Err(invalid_input(Error::Format(
+            "between 1 and 32 recipients required",
+        )));
+    }
+    for (i, a) in recipients.iter().enumerate() {
+        if recipients[..i].iter().any(|b| b.as_bytes() == a.as_bytes()) {
+            return Err(invalid_input(Error::Format("duplicate recipient")));
+        }
+    }
+    Ok(())
+}
+
+/// Encode a multi-recipient header: stanza `i` wraps `wrapped_keys[i]` for `recipients[i]`;
+/// the MAC is keyed with `mac_key` (the file key, in honest use).
+fn multi_header(
+    recipients: &[&PublicKey],
+    wrapped_keys: &[[u8; 32]],
+    mac_key: &[u8; 32],
+    aad: &[u8],
+    chunk_log: u8,
+    rng: &mut dyn RandomSource,
+) -> io::Result<Vec<u8>> {
+    let mut stanzas = Vec::with_capacity(recipients.len());
+    for (recipient, file_key) in recipients.iter().zip(wrapped_keys) {
+        let AlgorithmId::Kem(kem) = recipient.algorithm() else {
+            return Err(invalid_input(Error::AlgorithmMismatch));
+        };
+        let (kem_ciphertext, ss) = registry::kem(kem)
+            .and_then(|k| k.encapsulate(recipient, rng))
+            .map_err(invalid_input)?;
+        let wrapped = wrap_key(kem, &kem_ciphertext, ss.expose())?
+            .encrypt(&Nonce::default(), &file_key[..])
+            .map_err(|_| invalid_input(Error::Backend("AEAD encryption failed")))?;
+        stanzas.push(RecipientStanza {
+            kem,
+            kem_ciphertext,
+            wrapped_key: wrapped.try_into().expect("32-byte key + 16-byte tag"),
+        });
+    }
+    let mut header = MultiStreamHeader {
+        aead: AeadId::ChaCha20Poly1305,
+        chunk_log,
+        recipients: stanzas,
+        mac: [0; HEADER_MAC_LEN],
+    };
+    let unauthenticated = header.encode_unauthenticated().map_err(invalid_input)?;
+    header.mac = header_mac(&unauthenticated, aad, mac_key);
+    header.encode().map_err(invalid_input)
+}
+
+/// The payload key depends on the file key, the stream parameters (the first 8 header bytes:
+/// magic, version, kind, AEAD, chunk size) and `aad`, but not on the stanzas: those are
+/// authenticated by the header MAC, so the recipient list can be re-wrapped without touching
+/// the body ([`rewrap`]).
+fn payload_cipher(
+    raw_header: &[u8],
+    aad: &[u8],
+    file_key: &[u8; 32],
+) -> io::Result<ChaCha20Poly1305> {
+    aead(&kdf(MULTI_KDF_LABEL, &raw_header[..8], aad, file_key))
 }
 
 /// Find the stanza for `secret` and recover the file key; then check the header MAC.
@@ -789,6 +826,53 @@ pub fn encrypt_file_multi(
         io::BufReader::with_capacity(1 << 16, fs::File::open(input)?),
         output,
     )
+}
+
+/// Change the recipients of a multi-recipient stream without re-encrypting its body (ADR-0009):
+/// `secret` must be one of the current recipients; the output is readable by exactly
+/// `recipients`. Copies the body unchanged and returns the number of body bytes.
+///
+/// Removing a recipient this way does not revoke what they may already have: anyone who could
+/// decrypt the old file knows its file key. Re-encrypt the data to revoke access to it.
+/// Single-recipient streams (kind 5) have no file key to re-wrap: re-encrypt them.
+pub fn rewrap<R: Read, W: Write>(
+    secret: &SecretKey,
+    aad: &[u8],
+    recipients: &[&PublicKey],
+    mut input: R,
+    mut output: W,
+) -> io::Result<u64> {
+    check_recipients(recipients)?;
+    let (header, raw) = AnyStreamHeader::read_from(&mut input)?;
+    let AnyStreamHeader::Multi(h) = header else {
+        return Err(invalid_input(Error::Format(
+            "single-recipient stream: it cannot be re-wrapped, re-encrypt it",
+        )));
+    };
+    let file_key = unwrap_file_key(secret, aad, &h, &raw)?;
+    let keys = vec![*file_key; recipients.len()];
+    let new_header = multi_header(recipients, &keys, &file_key, aad, h.chunk_log, &mut OsRng);
+    keys.into_iter().for_each(|mut k| k.zeroize());
+    output.write_all(&new_header?)?;
+    let n = io::copy(&mut input, &mut output)?;
+    output.flush()?;
+    Ok(n)
+}
+
+/// [`rewrap`] from file to file; the output is replaced atomically.
+pub fn rewrap_file(
+    secret: &SecretKey,
+    aad: &[u8],
+    recipients: &[&PublicKey],
+    input: &Path,
+    output: &Path,
+) -> io::Result<u64> {
+    let tmp = TempOutput::create(output)?;
+    let sink = io::BufWriter::with_capacity(1 << 16, tmp.file.as_ref().expect("open"));
+    let source = io::BufReader::with_capacity(1 << 16, fs::File::open(input)?);
+    let n = rewrap(secret, aad, recipients, source, sink)?;
+    tmp.commit()?;
+    Ok(n)
 }
 
 /// Decrypt everything from `input` into the file `output`. The file appears (atomically,

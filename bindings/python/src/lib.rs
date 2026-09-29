@@ -154,11 +154,12 @@ mod _vpqc {
         aad: &[u8],
         input: std::path::PathBuf,
         output: std::path::PathBuf,
+        envelope: bool,
     ) -> PyResult<u64> {
         let pks = parse_recipients(py, &public_keys)?;
         let refs: Vec<_> = pks.iter().collect();
-        py.detach(|| match refs[..] {
-            [pk] => vpqc::stream::encrypt_file(pk, aad, &input, &output),
+        py.detach(|| match (&refs[..], envelope) {
+            ([pk], false) => vpqc::stream::encrypt_file(pk, aad, &input, &output),
             _ => vpqc::stream::encrypt_file_multi(&refs, aad, &input, &output),
         })
         .map_err(|e| io_to_py(py, e))
@@ -172,6 +173,23 @@ mod _vpqc {
             .iter()
             .map(|k| keys::public_from_bytes(k).map_err(|e| to_py(py, e)))
             .collect()
+    }
+
+    /// Change the recipients of a multi-recipient file without re-encrypting it (ADR-0009).
+    #[pyfunction]
+    fn rewrap_file(
+        py: Python<'_>,
+        secret_key: &[u8],
+        public_keys: Vec<Vec<u8>>,
+        aad: &[u8],
+        input: std::path::PathBuf,
+        output: std::path::PathBuf,
+    ) -> PyResult<u64> {
+        let sk = keys::secret_from_bytes(secret_key).map_err(|e| to_py(py, e))?;
+        let pks = parse_recipients(py, &public_keys)?;
+        let refs: Vec<_> = pks.iter().collect();
+        py.detach(|| vpqc::stream::rewrap_file(&sk, aad, &refs, &input, &output))
+            .map_err(|e| io_to_py(py, e))
     }
 
     /// Decrypt a stream file; the output appears only if the whole stream verifies.

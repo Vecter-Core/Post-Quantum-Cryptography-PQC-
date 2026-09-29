@@ -60,6 +60,12 @@ int main(void) {
         CHECK(vpqc_decrypt_file(fsk.ptr, fsk.len, (const uint8_t *)"m", 1, enc, out, &n) == VPQC_OK && n == 200000);
         CHECK(vpqc_decrypt_file(sk2.ptr, sk2.len, (const uint8_t *)"m", 1, enc, out, &n) == VPQC_OK && n == 200000);
         CHECK(vpqc_encrypt_file_multi(keys, lens, 0, NULL, 0, in, enc, NULL) == VPQC_ERR_INVALID_ARGUMENT);
+        /* Re-wrap for the second recipient only; the first can no longer decrypt. */
+        const char *re = "vpqc-c-smoke.re";
+        CHECK(vpqc_rewrap_file(fsk.ptr, fsk.len, keys + 1, lens + 1, 1, (const uint8_t *)"m", 1, enc, re, NULL) == VPQC_OK);
+        CHECK(vpqc_decrypt_file(sk2.ptr, sk2.len, (const uint8_t *)"m", 1, re, out, &n) == VPQC_OK && n == 200000);
+        CHECK(vpqc_decrypt_file(fsk.ptr, fsk.len, (const uint8_t *)"m", 1, re, "vpqc-c-smoke.bad", NULL) == VPQC_ERR_DECRYPTION_FAILED);
+        remove(re);
         vpqc_buf_free(&pk2); vpqc_buf_free(&sk2);
         remove(in); remove(enc); remove(out);
         vpqc_buf_free(&fpk); vpqc_buf_free(&fsk);

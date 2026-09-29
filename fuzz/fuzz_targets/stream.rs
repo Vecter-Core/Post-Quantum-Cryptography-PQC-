@@ -2,12 +2,13 @@
 //! * Differential: `Decryptor` (pull) and `PushDecryptor` (push, input-chosen split sizes)
 //!   must agree on every input: both fail, or both return the same plaintext.
 //! * Round trip with input-chosen chunk size and write pattern, to one recipient or to two
-//!   recipients of different profiles (ADR-0009); any byte flip is rejected.
+//!   recipients of different profiles (ADR-0009, including re-wrapping); any byte flip is
+//!   rejected.
 #![no_main]
 use std::io::{Read, Write};
 
 use libfuzzer_sys::fuzz_target;
-use vpqc::stream::{Decryptor, Encryptor, PushDecryptor, StreamOptions};
+use vpqc::stream::{self, Decryptor, Encryptor, PushDecryptor, StreamOptions};
 use vpqc_fuzz::{Input, enc_keys};
 
 fn pull(sk: &vpqc::SecretKey, aad: &[u8], ct: &[u8]) -> Option<Vec<u8>> {
@@ -57,6 +58,11 @@ fuzz_target!(|data: &[u8]| {
         assert_eq!(push(&kp.secret, aad, &ct, step).as_deref(), Some(rest));
         if multi {
             assert_eq!(pull(&other.secret, aad, &ct).as_deref(), Some(rest));
+            // Re-wrap for `other` only: the body is unchanged, `kp` is locked out.
+            let mut re = Vec::new();
+            stream::rewrap(&kp.secret, aad, &[&other.public], &ct[..], &mut re).unwrap();
+            assert_eq!(pull(&other.secret, aad, &re).as_deref(), Some(rest));
+            assert_eq!(pull(&kp.secret, aad, &re), None, "removed recipient still decrypts");
         }
         let i = (step * 104729 + rest.len()) % ct.len();
         let mut bad = ct.clone();

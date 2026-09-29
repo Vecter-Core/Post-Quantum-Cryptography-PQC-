@@ -247,29 +247,63 @@ func EncryptFile(pk PublicKey, inPath, outPath string, aad []byte) (uint64, erro
 	return uint64(n), err
 }
 
-// EncryptFileMulti is EncryptFile for several recipients (1 to 32, e.g. a user key and a
-// recovery key): each can decrypt with DecryptFile and their own secret key.
-func EncryptFileMulti(recipients []PublicKey, inPath, outPath string, aad []byte) (uint64, error) {
+// cKeyArrays copies public keys into C memory (cgo forbids passing Go memory that holds Go
+// pointers). Call the returned function to free them.
+func cKeyArrays(recipients []PublicKey) (**C.uint8_t, *C.size_t, func(), error) {
 	if len(recipients) == 0 || len(recipients) > 32 {
-		return 0, fmt.Errorf("%w: between 1 and 32 recipients required", ErrInvalidInput)
+		return nil, nil, nil, fmt.Errorf("%w: between 1 and 32 recipients required", ErrInvalidInput)
 	}
-	// cgo forbids passing Go memory that holds Go pointers: build the arrays in C memory.
 	count := len(recipients)
-	ptrSize := C.size_t(unsafe.Sizeof(uintptr(0)))
-	keys := (*[32]*C.uint8_t)(C.malloc(C.size_t(count) * ptrSize))
+	keys := (*[32]*C.uint8_t)(C.malloc(C.size_t(count) * C.size_t(unsafe.Sizeof(uintptr(0)))))
 	lens := (*[32]C.size_t)(C.malloc(C.size_t(count) * C.size_t(unsafe.Sizeof(C.size_t(0)))))
-	defer C.free(unsafe.Pointer(keys))
-	defer C.free(unsafe.Pointer(lens))
 	for i, pk := range recipients {
 		keys[i] = (*C.uint8_t)(C.CBytes(pk.b))
 		lens[i] = C.size_t(len(pk.b))
-		defer C.free(unsafe.Pointer(keys[i]))
 	}
+	free := func() {
+		for i := 0; i < count; i++ {
+			C.free(unsafe.Pointer(keys[i]))
+		}
+		C.free(unsafe.Pointer(keys))
+		C.free(unsafe.Pointer(lens))
+	}
+	return &keys[0], &lens[0], free, nil
+}
+
+// EncryptFileMulti is EncryptFile for several recipients (1 to 32, e.g. a user key and a
+// recovery key): each can decrypt with DecryptFile and their own secret key. With a single
+// recipient it still writes the multi-recipient (envelope) format, so the recipients can later
+// be changed with RewrapFile (key rotation).
+func EncryptFileMulti(recipients []PublicKey, inPath, outPath string, aad []byte) (uint64, error) {
+	keys, lens, free, err := cKeyArrays(recipients)
+	if err != nil {
+		return 0, err
+	}
+	defer free()
 	in, out := C.CString(inPath), C.CString(outPath)
 	defer C.free(unsafe.Pointer(in))
 	defer C.free(unsafe.Pointer(out))
 	var n C.uint64_t
-	err := check(C.vpqc_encrypt_file_multi(&keys[0], &lens[0], C.size_t(count), ptr(aad), C.size_t(len(aad)), in, out, &n))
+	err = check(C.vpqc_encrypt_file_multi(keys, lens, C.size_t(len(recipients)), ptr(aad), C.size_t(len(aad)), in, out, &n))
+	return uint64(n), err
+}
+
+// RewrapFile changes the recipients of a multi-recipient file without re-encrypting its data.
+// sk must belong to a current recipient; the output is readable by exactly the new recipients.
+// Removing a recipient does not revoke what they already decrypted. It returns the number of
+// body bytes copied.
+func RewrapFile(sk SecretKey, recipients []PublicKey, inPath, outPath string, aad []byte) (uint64, error) {
+	keys, lens, free, err := cKeyArrays(recipients)
+	if err != nil {
+		return 0, err
+	}
+	defer free()
+	in, out := C.CString(inPath), C.CString(outPath)
+	defer C.free(unsafe.Pointer(in))
+	defer C.free(unsafe.Pointer(out))
+	var n C.uint64_t
+	err = check(C.vpqc_rewrap_file(ptr(sk.b), C.size_t(len(sk.b)), keys, lens, C.size_t(len(recipients)),
+		ptr(aad), C.size_t(len(aad)), in, out, &n))
 	return uint64(n), err
 }
 

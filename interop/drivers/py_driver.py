@@ -29,6 +29,9 @@ def main(argv):
     elif cmd == "encrypt-file-multi":  # encrypt-file-multi AAD IN OUT PUBFILE...
         pks = [vpqc.PublicKey.from_text(Path(f).read_text()) for f in a[3:]]
         vpqc.encrypt_file(pks, a[1], a[2], aad=a[0].encode())
+    elif cmd == "rewrap-file":  # rewrap-file SECFILE AAD IN OUT PUBFILE...
+        pks = [vpqc.PublicKey.from_text(Path(f).read_text()) for f in a[4:]]
+        vpqc.rewrap_file(vpqc.SecretKey.from_text(Path(a[0]).read_text()), pks, a[2], a[3], aad=a[1].encode())
     elif cmd == "decrypt-file":  # decrypt-file SECFILE AAD IN OUT
         vpqc.decrypt_file(vpqc.SecretKey.from_text(Path(a[0]).read_text()), a[2], a[3], aad=a[1].encode())
     else:
