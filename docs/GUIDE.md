@@ -280,6 +280,33 @@ vpqc decrypt --key app.protected hoso.vpqc -o hoso.pdf   # mọi lệnh nhận k
 
   Khoá do KMS/TPM bảo vệ: dùng CLI (`vpqc protect/unprotect --kms`) hoặc API Rust `vpqc::protect`.
 
+## 3g. VPN hậu lượng tử (WireGuard, IPsec)
+
+WireGuard dùng X25519 cố định nhưng cho phép thêm **pre-shared key (PSK)** 32 byte cho mỗi peer;
+PSK được trộn vào handshake, nên nếu kẻ tấn công không biết PSK thì dữ liệu ghi lại vẫn an toàn
+kể cả khi X25519 bị phá. vpqc tạo PSK và chuyển cho peer bằng sealed box lai (X-Wing):
+
+```sh
+# Máy A (có khoá ký vpqc alice.vpqc-secret; Bob có khoá mã hoá vpqc bob.pub)
+vpqc wg psk-seal --to bob.pub --wg-local "$(wg show wg0 public-key)" --wg-peer "$B_WG_PUB" \
+  --psk-out wg0-bob.psk --sign-key alice.vpqc-secret -o psk-for-bob
+wg set wg0 peer "$B_WG_PUB" preshared-key wg0-bob.psk
+# Máy B: kiểm chữ ký của Alice, mở PSK
+vpqc wg psk-open --key bob.vpqc-secret --from alice.pub \
+  --wg-local "$(wg show wg0 public-key)" --wg-peer "$A_WG_PUB" -o wg0-alice.psk psk-for-bob
+wg set wg0 peer "$A_WG_PUB" preshared-key wg0-alice.psk
+```
+
+- PSK gắn với **đúng cặp khoá WireGuard** của đường hầm: không dùng lại được cho peer khác.
+- **Luôn dùng `--sign-key`/`--from`** trừ khi kênh chuyển tệp đã xác thực (SSH, Ansible...):
+  sealed box không cho biết ai niêm phong, kẻ đứng giữa có thể thay PSK của chính họ.
+- **Xoay PSK định kỳ** (timer chạy lại hai lệnh trên với `--force`). PSK tĩnh không có forward
+  secrecy: nếu khoá vpqc của peer bị lộ sau này, PSK đã ghi lại sẽ mở được. Đường truyền giá trị
+  cao chạy được daemon phụ: dùng **Rosenpass** (xoay PSK 2 phút/lần bằng AKE hậu lượng tử).
+- `vpqc scan /etc/wireguard /etc/systemd/network /etc/NetworkManager` báo peer **thiếu PSK**
+  (T0); `vpqc scan /etc/swanctl` báo đề xuất IKEv2/ESP **thiếu ML-KEM** (strongSwan ≥ 6.0:
+  `proposals = aes256gcm16-prfsha384-x25519-ke1_mlkem768`, RFC 9370).
+
 ## 3b. Lỗi và bảo mật khi dùng
 
 - Giải mã/xác minh thất bại luôn báo lỗi gộp (`DecryptionFailed` / `VerificationFailed`): sai khoá,

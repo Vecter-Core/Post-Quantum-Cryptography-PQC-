@@ -1,0 +1,7 @@
+[Interface]
+PrivateKey = x
+[Peer]
+PublicKey = y
+PresharedKey = z
+[Peer]
+PublicKey = w

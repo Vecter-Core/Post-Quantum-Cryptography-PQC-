@@ -1,0 +1,3 @@
+connections {
+ pq { proposals = aes256-x25519-ke1_mlkem768, aes128-modp2048 }
+}

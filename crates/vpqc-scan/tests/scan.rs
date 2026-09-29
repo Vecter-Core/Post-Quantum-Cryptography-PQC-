@@ -465,3 +465,89 @@ fn ssh_kex_algorithms_are_audited() {
             .any(|f| f.path.ends_with("notes.conf") && f.algorithm.starts_with("SSH "))
     );
 }
+
+#[test]
+fn vpn_configurations_are_audited() {
+    let dir = tempfile::tempdir().unwrap();
+    let wg = dir.path().join("etc/wireguard");
+    fs::create_dir_all(&wg).unwrap();
+    let secret = "YNqHbfBQKaGvzefSSojFkBGqhS/ob4fEs6Fz7DzKKmE=";
+    fs::write(
+        wg.join("wg0.conf"),
+        format!(
+            "[Interface]\nPrivateKey = {secret}\nAddress = 10.0.0.1/24\nListenPort = 51820\n\n\
+             [Peer]\nPublicKey = xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=\nAllowedIPs = 10.0.0.2/32\n\n\
+             [Peer]\nPublicKey = TrMvSoP4jYQlY6RIzBgbssQqY3vxI2Pi+y71lOWWXX0=\nPresharedKey = {secret}\nAllowedIPs = 10.0.0.3/32\n\n\
+             [Peer]\nPublicKey = gN65BkIKy1eCE9pP1wdc8ROUtkHLF2PfAqYdyYBz6EA=\nPresharedKey =\n"
+        ),
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("wg1.netdev"),
+        "[NetDev]\nName=wg1\nKind=wireguard\n[WireGuard]\nPrivateKeyFile=/etc/wg1.key\n[WireGuardPeer]\nPublicKey=abc=\nPresharedKeyFile=/etc/wg1.psk\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("vpn.nmconnection"),
+        "[connection]\ntype=wireguard\n[wireguard]\nprivate-key=abc\n[wireguard-peer.xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=]\nallowed-ips=0.0.0.0/0;\n",
+    )
+    .unwrap();
+    let swan = dir.path().join("etc/swanctl");
+    fs::create_dir_all(&swan).unwrap();
+    fs::write(
+        swan.join("swanctl.conf"),
+        "connections {\n  pq {\n    proposals = aes256gcm16-prfsha384-x25519-ke1_mlkem768\n    children {\n      net {\n        esp_proposals = aes256gcm16-ecp384-ke1_mlkem1024\n      }\n    }\n  }\n  old {\n    proposals = aes256-sha256-modp2048, aes256-sha256-x25519-ke1_mlkem768\n    children { c { esp_proposals = aes256gcm16 } }\n  }\n  def { proposals = default }\n}\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("ipsec.conf"),
+        "conn legacy\n  ike=aes256-sha256-modp2048!\n  esp=aes256-sha256\n",
+    )
+    .unwrap();
+
+    let r = scan_path(dir.path(), &Options::default()).unwrap();
+    let at = |file: &str, algo: &str| -> Vec<(Option<usize>, Risk)> {
+        r.findings
+            .iter()
+            .filter(|f| f.path.ends_with(file) && f.algorithm.contains(algo))
+            .map(|f| (f.line, f.risk))
+            .collect()
+    };
+    // wg0: peer 1 and peer 3 (empty PresharedKey) lack a PSK; peer 2 has one.
+    assert_eq!(
+        at("wg0.conf", "without pre-shared key"),
+        vec![
+            (Some(6), Risk::QuantumVulnerable),
+            (Some(15), Risk::QuantumVulnerable)
+        ]
+    );
+    assert_eq!(at("wg0.conf", "with pre-shared key").len(), 1);
+    assert_eq!(find(&r, "wg0.conf", "without pre-shared key").tier, "T0");
+    assert_eq!(at("wg1.netdev", "with pre-shared key").len(), 1);
+    assert_eq!(at("vpn.nmconnection", "without pre-shared key").len(), 1);
+    // strongSwan: hybrid IKE and ESP, a mixed list flagged, default and PFS-less ESP skipped.
+    assert_eq!(
+        at("swanctl.conf", "IKEv2 key exchange with ML-KEM (hybrid").len(),
+        1
+    );
+    assert_eq!(
+        at(
+            "swanctl.conf",
+            "ESP/AH (CHILD_SA rekey) key exchange with ML-KEM"
+        )
+        .len(),
+        1
+    );
+    let mixed = find(&r, "swanctl.conf", "IKEv2 key exchange without ML-KEM");
+    assert_eq!(mixed.line, Some(11));
+    assert!(mixed.detail.contains("1 of 2"), "{}", mixed.detail);
+    assert_eq!(
+        at("ipsec.conf", "IKEv2 key exchange without ML-KEM").len(),
+        1
+    );
+    assert_eq!(at("ipsec.conf", "ESP").len(), 0);
+    // Key material never reaches the report.
+    for out in [to_text(&r, true), to_json(&r), to_cbom(&r)] {
+        assert!(!out.contains(secret), "key leaked");
+    }
+}
