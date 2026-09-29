@@ -1,0 +1,13 @@
+[package]
+name = "vpqc-ssh"
+description = "SSH post-quantum readiness: probe a server's key exchange offer and audit KexAlgorithms settings"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+
+[lints]
+workspace = true

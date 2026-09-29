@@ -13,6 +13,7 @@ members = [
     "crates/vpqc-tls",
     "crates/vpqc-jose",
     "crates/vpqc-x509",
+    "crates/vpqc-ssh",
     "tools/ct-check",
 ]
 
@@ -35,6 +36,7 @@ vpqc-scan = { path = "crates/vpqc-scan", version = "0.0.1" }
 vpqc-hpke = { path = "crates/vpqc-hpke", version = "0.0.1" }
 vpqc-jose = { path = "crates/vpqc-jose", version = "0.0.1" }
 vpqc-x509 = { path = "crates/vpqc-x509", version = "0.0.1" }
+vpqc-ssh = { path = "crates/vpqc-ssh", version = "0.0.1" }
 
 libcrux-ml-kem = { version = "0.0.10", default-features = false, features = ["mlkem768", "mlkem1024", "std"] }
 libcrux-ml-dsa = { version = "0.0.10", default-features = false, features = ["mldsa65", "mldsa87", "std"] }

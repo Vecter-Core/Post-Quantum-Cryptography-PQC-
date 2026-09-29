@@ -1,6 +1,7 @@
 //! `vpqc` command-line tool.
 
 mod jose;
+mod ssh;
 mod x509;
 
 use std::fs;
@@ -248,6 +249,11 @@ enum Command {
     Jwt {
         #[command(subcommand)]
         command: jose::JwtCommand,
+    },
+    /// SSH: check whether a server offers a post-quantum key exchange.
+    Ssh {
+        #[command(subcommand)]
+        command: ssh::SshCommand,
     },
     /// Post-quantum X.509: ML-DSA keys, certificates, chain verification.
     X509 {
@@ -548,6 +554,7 @@ fn run(cli: Cli) -> CliResult {
         Command::Jws { command } => jose::jws(command),
         Command::Jwt { command } => jose::jwt(command),
         Command::X509 { command } => x509::run(command),
+        Command::Ssh { command } => ssh::run(command),
     }
 }
 

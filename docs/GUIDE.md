@@ -194,6 +194,31 @@ vpqc x509 verify --ca root.pem --dns api.congtyx.vn api.pem
   trình duyệt/thư viện chuẩn khi chúng hỗ trợ ML-DSA.
 - Chứng chỉ ML-DSA **lớn** (leaf 5,6–6,9 KB, chuỗi ~14 KB): cân nhắc cho thiết bị nhúng và TLS.
 
+## 3d. SSH hậu lượng tử (OpenSSH)
+
+OpenSSH đã có trao đổi khoá lai: `sntrup761x25519-sha512` (mặc định từ 9.0) và
+`mlkem768x25519-sha256` (ML-KEM, từ 9.9, mặc định từ 10.0). Việc cần làm là **đừng tắt nó**
+và tìm máy chủ chưa có:
+
+```sh
+vpqc ssh probe git.congtyx.vn                 # máy chủ đề xuất những KEX nào
+vpqc ssh probe 10.0.0.5:2222 --require-pq     # mã thoát 2 nếu không có KEX lai (dùng trong CI)
+vpqc ssh probe host --json                    # cho script quét cả dàn máy
+vpqc scan /etc/ssh                            # soát KexAlgorithms trong sshd_config/ssh_config
+```
+
+- `probe` chỉ đọc gói `KEXINIT` (gửi rõ trước khi xác thực), không đăng nhập, không cần khoá.
+- Cấu hình khuyên dùng: **xoá dòng `KexAlgorithms`** để dùng mặc định, hoặc đặt
+  `KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512@openssh.com,curve25519-sha256`
+  (lai đứng đầu). Ở phía client, thứ tự của client quyết định: lai phải đứng **đầu**.
+- **Cẩn thận:** OpenSSH < 9.9 không biết `mlkem768x25519-sha256` và `sshd` **từ chối khởi
+  động** ("Unsupported KEX algorithm"). Luôn chạy `sshd -t` trước khi reload; với 9.0–9.8 bỏ
+  tên `mlkem…` khỏi danh sách (vẫn còn `sntrup761x25519-sha512@openssh.com`).
+- `KexAlgorithms -sntrup*,mlkem*` hay danh sách chỉ gồm `curve25519`/`ecdh-*` bị `scan`
+  báo T0. `+...`/`^...` giữ nguyên các KEX lai mặc định nên không bị báo.
+- Môi trường CNSA 2.0/FIPS: dùng `mlkem768x25519-sha256` (ML-KEM là chuẩn NIST; sntrup761 thì
+  không). Khoá host/người dùng (chữ ký) chưa có chuẩn PQ cho SSH và ít khẩn cấp hơn (ADR-0011).
+
 ## 3b. Lỗi và bảo mật khi dùng
 
 - Giải mã/xác minh thất bại luôn báo lỗi gộp (`DecryptionFailed` / `VerificationFailed`): sai khoá,

@@ -14,6 +14,8 @@ Review quarterly. Verify against the primary source before changing behaviour.
 | CNSA 2.0 | Timelines by system class (**verify**) | NSA | `cnsa2` profile |
 | X-Wing KEM | CFRG draft, test vectors used in `vpqc-hybrid/tests` | draft-connolly-cfrg-xwing-kem | Implemented, KAT verified |
 | TLS hybrid `X25519MLKEM768` | IETF TLS WG | IETF datatracker | Integration phase |
+| SSH hybrid KEX `mlkem768x25519-sha256`, `mlkem768nistp256-sha256`, `mlkem1024nistp384-sha384` | IETF SSHM draft (**check status**); OpenSSH >= 9.9, default in 10.0 | draft-ietf-sshm-mlkem-hybrid-kex | Classified as ML-KEM hybrid by `vpqc-ssh` (probe and config audit) |
+| SSH `sntrup761x25519-sha512` | IETF SSHM draft (**check status**); OpenSSH default since 9.0 | draft-ietf-sshm-ntruprime-ssh | Accepted as hybrid, labelled "not NIST" |
 | Composite signatures for X.509 | IETF LAMPS drafts | IETF datatracker | Align labels and OIDs when final |
 | ML-DSA in X.509 (RFC 9881, was draft-ietf-lamps-dilithium-certificates) | RFC (**verify number**) | IETF | Implemented in `vpqc-x509`; interop-tested with OpenSSL (cryptography 50 / OpenSSL 4, Node.js / OpenSSL 3.5) |
 | ML-KEM in X.509, ML-DSA / ML-KEM in CMS | IETF LAMPS | IETF datatracker | Align key encoding when final |

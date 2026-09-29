@@ -17,6 +17,7 @@ vpqc-jose = { path = "../crates/vpqc-jose" }
 vpqc-x509 = { path = "../crates/vpqc-x509" }
 serde_json = "1"
 vpqc-scan = { path = "../crates/vpqc-scan" }
+vpqc-ssh = { path = "../crates/vpqc-ssh" }
 
 [[bin]]
 name = "parse_formats"
@@ -70,6 +71,13 @@ bench = false
 [[bin]]
 name = "x509"
 path = "fuzz_targets/x509.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ssh"
+path = "fuzz_targets/ssh.rs"
 test = false
 doc = false
 bench = false

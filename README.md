@@ -79,6 +79,16 @@ vpqc x509 verify --ca root.pem --dns api.example.com api.pem
 
 ML-DSA theo RFC 9881, tương thích OpenSSL (đã kiểm với Python `cryptography` và Node.js); crate `vpqc-x509`.
 
+## SSH hậu lượng tử
+
+```sh
+vpqc ssh probe git.example.com --require-pq   # máy chủ có đề xuất KEX lai (ML-KEM/sntrup761) không
+vpqc scan /etc/ssh                            # KexAlgorithms nào đang tắt KEX lai
+```
+
+Dùng KEX lai sẵn có của OpenSSH (`mlkem768x25519-sha256`), không tự làm SSH; crate `vpqc-ssh`
+(ADR-0011), đã kiểm với `sshd` thật.
+
 ## TLS lai và HPKE
 
 ```sh
