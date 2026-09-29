@@ -195,7 +195,7 @@ pub unsafe extern "C" fn vpqc_buf_free(buf: *mut vpqc_buf) {
     unsafe { buf.write(vpqc_buf::EMPTY) };
 }
 
-/// Generate an encryption key pair. `profile`: 1 standard, 2 fast-auth, 3 cnsa2.
+/// Generate an encryption key pair. `profile`: 1 standard, 2 fast-auth, 3 cnsa2, 4 high.
 /// Keys are returned in their binary encoding.
 ///
 /// # Safety
@@ -210,7 +210,7 @@ pub unsafe extern "C" fn vpqc_encryption_keygen(
     unsafe { keygen(profile_id, true, public_out, secret_out) }
 }
 
-/// Generate a signing key pair. `profile`: 1 standard, 2 fast-auth, 3 cnsa2.
+/// Generate a signing key pair. `profile`: 1 standard, 2 fast-auth, 3 cnsa2, 4 high.
 ///
 /// # Safety
 /// `public_out` and `secret_out` must be valid for writes of one `vpqc_buf` each.

@@ -25,6 +25,7 @@ try {
                 'standard' => Profile::Standard,
                 'fast-auth' => Profile::FastAuth,
                 'cnsa2' => Profile::Cnsa2,
+                'high' => Profile::High,
             };
             $kp = $a[0] === 'encrypt' ? Vpqc::generateEncryptionKeypair($p) : Vpqc::generateSigningKeypair($p);
             file_put_contents($a[2] . '.pub', $kp->public->toText());

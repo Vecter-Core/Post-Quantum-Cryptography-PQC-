@@ -25,7 +25,7 @@ fn to_py(py: Python<'_>, e: Error) -> PyErr {
 fn profile(name: &str) -> PyResult<Profile> {
     Profile::from_name(name).map_err(|_| {
         pyo3::exceptions::PyValueError::new_err(format!(
-            "unknown profile {name:?}; expected one of: standard, fast-auth, cnsa2"
+            "unknown profile {name:?}; expected one of: standard, fast-auth, cnsa2, high"
         ))
     })
 }

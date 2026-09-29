@@ -13,4 +13,6 @@ enum Profile: int
     case FastAuth = 2;
     /** ML-KEM-1024 and ML-DSA-87 without a classical component. */
     case Cnsa2 = 3;
+    /** Hybrid P-384 + ML-KEM-1024 and composite ECDSA-P384 + ML-DSA-87, for long-lived data. */
+    case High = 4;
 }

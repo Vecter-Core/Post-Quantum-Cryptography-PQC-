@@ -31,6 +31,7 @@ public final class JavaDriver {
                         case "standard" -> Profile.STANDARD;
                         case "fast-auth" -> Profile.FAST_AUTH;
                         case "cnsa2" -> Profile.CNSA2;
+                        case "high" -> Profile.HIGH;
                         default -> throw new IllegalArgumentException("profile " + args[2]);
                     };
                     KeyPair kp = args[1].equals("encrypt")

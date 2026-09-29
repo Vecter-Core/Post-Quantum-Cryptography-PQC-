@@ -5,7 +5,7 @@ require "securerandom"
 require_relative "../lib/vpqc"
 
 class VpqcTest < Minitest::Test
-  PROFILES = %i[standard fast_auth cnsa2].freeze
+  PROFILES = %i[standard fast_auth cnsa2 high].freeze
 
   def test_abi_version
     assert_equal 1, Vpqc.abi_version >> 16

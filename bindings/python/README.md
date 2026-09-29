@@ -18,7 +18,8 @@ vpqc.verify(signer.public, b"release.tar.gz", sig, context=b"my-app/release-v1")
 ```
 
 Profiles: `"standard"` (default), `"fast-auth"` (classical Ed25519 signatures, short-lived
-authentication only), `"cnsa2"` (ML-KEM-1024 + ML-DSA-87).
+authentication only), `"cnsa2"` (ML-KEM-1024 + ML-DSA-87), `"high"` (P-384 + ML-KEM-1024 hybrid KEM,
+ECDSA-P384 + ML-DSA-87 composite signatures).
 
 Errors derive from `vpqc.VpqcError`: `DecryptionError`, `VerificationError`,
 `InvalidInputError` (also a `ValueError`), `BackendError`.

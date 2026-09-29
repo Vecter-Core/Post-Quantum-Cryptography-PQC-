@@ -77,7 +77,7 @@ fn abi_version_is_1_0() {
 
 #[test]
 fn encrypt_round_trip_all_profiles() {
-    for profile in 1..=3 {
+    for profile in 1..=4 {
         let (pk, sk) = keygen(vpqc_encryption_keygen, profile);
         let (rc, sealed) = seal(&pk, b"hello ffi", b"ctx");
         assert_eq!(rc, VPQC_OK);
@@ -126,7 +126,7 @@ fn empty_plaintext_with_null_pointers() {
 
 #[test]
 fn sign_verify_and_errors() {
-    for profile in 1..=3 {
+    for profile in 1..=4 {
         let (pk, sk) = keygen(vpqc_signing_keygen, profile);
         let mut sig = empty();
         let rc = unsafe {

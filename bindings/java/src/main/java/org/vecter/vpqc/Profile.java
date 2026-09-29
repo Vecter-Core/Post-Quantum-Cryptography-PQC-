@@ -7,7 +7,9 @@ public enum Profile {
     /** Hybrid KEM, classical Ed25519 signatures. For short-lived authentication only. */
     FAST_AUTH(2),
     /** ML-KEM-1024 and ML-DSA-87 without a classical component. */
-    CNSA2(3);
+    CNSA2(3),
+    /** Hybrid P-384 + ML-KEM-1024 and composite ECDSA-P384 + ML-DSA-87, for long-lived data. */
+    HIGH(4);
 
     final int id;
 

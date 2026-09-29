@@ -40,6 +40,8 @@ const (
 	ProfileFastAuth Profile = C.VPQC_PROFILE_FAST_AUTH
 	// ProfileCNSA2: ML-KEM-1024 and ML-DSA-87 without a classical component.
 	ProfileCNSA2 Profile = C.VPQC_PROFILE_CNSA2
+	// ProfileHigh: hybrid P-384 + ML-KEM-1024 and composite ECDSA-P384 + ML-DSA-87 for long-lived data.
+	ProfileHigh Profile = C.VPQC_PROFILE_HIGH
 )
 
 // Sentinel errors; use errors.Is.

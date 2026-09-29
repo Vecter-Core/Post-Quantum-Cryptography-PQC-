@@ -7,7 +7,7 @@
  *    which zeroizes the memory first (safe for secret keys and plaintexts).
  *  - Inputs are (pointer, length); the pointer may be NULL only when length is 0.
  *  - Keys and signatures use the self-describing binary encodings of vpqc-format.
- *  - Profiles: 1 = standard, 2 = fast-auth, 3 = cnsa2.
+ *  - Profiles: 1 = standard, 2 = fast-auth, 3 = cnsa2, 4 = high.
  */
 #ifndef VPQC_H
 #define VPQC_H
@@ -40,6 +40,7 @@ extern "C" {
 #define VPQC_PROFILE_STANDARD 1
 #define VPQC_PROFILE_FAST_AUTH 2
 #define VPQC_PROFILE_CNSA2 3
+#define VPQC_PROFILE_HIGH 4
 
 typedef struct vpqc_buf {
     uint8_t *ptr;

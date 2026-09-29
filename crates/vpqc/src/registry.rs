@@ -1,6 +1,11 @@
 use vpqc_backend_libcrux::{MlDsa65, MlDsa87, MlKem768, MlKem1024};
 use vpqc_core::{Error, Kem, KemId, Result, SigId, SignatureScheme};
-use vpqc_hybrid::{CompositeEd25519MlDsa65, Ed25519, XWing};
+use vpqc_hybrid::{
+    CompositeEcdsaP384MlDsa87, CompositeEd25519MlDsa65, Ed25519, MlKem1024P384, XWing,
+};
+
+static COMPOSITE_ED25519_MLDSA65: CompositeEd25519MlDsa65 = CompositeEd25519MlDsa65::new();
+static COMPOSITE_ECDSA_P384_MLDSA87: CompositeEcdsaP384MlDsa87 = CompositeEcdsaP384MlDsa87::new();
 
 /// The implementation of a KEM.
 pub fn kem(id: KemId) -> Result<&'static dyn Kem> {
@@ -8,6 +13,7 @@ pub fn kem(id: KemId) -> Result<&'static dyn Kem> {
         KemId::XWing => &XWing,
         KemId::MlKem768 => &MlKem768,
         KemId::MlKem1024 => &MlKem1024,
+        KemId::MlKem1024P384 => &MlKem1024P384,
         _ => return Err(Error::Unsupported("KEM not compiled in")),
     })
 }
@@ -18,7 +24,8 @@ pub fn signature_scheme(id: SigId) -> Result<&'static dyn SignatureScheme> {
         SigId::Ed25519 => &Ed25519,
         SigId::MlDsa65 => &MlDsa65,
         SigId::MlDsa87 => &MlDsa87,
-        SigId::Ed25519MlDsa65 => &CompositeEd25519MlDsa65,
+        SigId::Ed25519MlDsa65 => &COMPOSITE_ED25519_MLDSA65,
+        SigId::EcdsaP384MlDsa87 => &COMPOSITE_ECDSA_P384_MLDSA87,
         _ => return Err(Error::Unsupported("signature scheme not compiled in")),
     })
 }

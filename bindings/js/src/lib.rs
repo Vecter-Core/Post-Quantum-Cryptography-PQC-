@@ -1,5 +1,7 @@
 //! WebAssembly bindings. Thin wrappers: all logic is in the `vpqc` Rust crates.
 //!
+//! Profiles: "standard", "fast-auth", "cnsa2", "high".
+//!
 //! Errors are thrown as `Error` objects with `name = "VpqcError"` and a stable `code`
 //! string (`DECRYPTION_FAILED`, `VERIFICATION_FAILED`, `INVALID_INPUT`, `BACKEND`).
 
@@ -47,7 +49,7 @@ impl KeyPair {
     }
 }
 
-/// Generate an encryption key pair. `profile`: "standard" | "fast-auth" | "cnsa2".
+/// Generate an encryption key pair. `profile`: "standard" | "fast-auth" | "cnsa2" | "high".
 #[wasm_bindgen(js_name = generateEncryptionKeypair)]
 pub fn generate_encryption_keypair(profile_name: Option<String>) -> Result<KeyPair, JsValue> {
     let p = profile(profile_name.as_deref().unwrap_or("standard"))?;
@@ -58,7 +60,7 @@ pub fn generate_encryption_keypair(profile_name: Option<String>) -> Result<KeyPa
     })
 }
 
-/// Generate a signing key pair. `profile`: "standard" | "fast-auth" | "cnsa2".
+/// Generate a signing key pair. `profile`: "standard" | "fast-auth" | "cnsa2" | "high".
 #[wasm_bindgen(js_name = generateSigningKeypair)]
 pub fn generate_signing_keypair(profile_name: Option<String>) -> Result<KeyPair, JsValue> {
     let p = profile(profile_name.as_deref().unwrap_or("standard"))?;

@@ -34,6 +34,7 @@ enum ProfileArg {
     Standard,
     FastAuth,
     Cnsa2,
+    High,
 }
 
 impl From<ProfileArg> for Profile {
@@ -42,6 +43,7 @@ impl From<ProfileArg> for Profile {
             ProfileArg::Standard => Profile::Standard,
             ProfileArg::FastAuth => Profile::FastAuth,
             ProfileArg::Cnsa2 => Profile::Cnsa2,
+            ProfileArg::High => Profile::High,
         }
     }
 }

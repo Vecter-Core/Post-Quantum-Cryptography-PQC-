@@ -12,7 +12,7 @@ Xem kế hoạch đầy đủ tại [docs/ROADMAP.md](docs/ROADMAP.md).
 ## Trạng thái
 
 Bản tiền phát hành (0.0.x), **chưa kiểm toán, chưa dùng cho bí mật thật**. Đã có lõi Rust
-(ML-KEM, ML-DSA, X-Wing, chữ ký composite), thư viện `vpqc` và CLI `vpqc`.
+(ML-KEM, ML-DSA, X-Wing, MLKEM1024-P384, chữ ký composite; 4 profile), thư viện `vpqc` và CLI `vpqc`.
 
 ```sh
 cargo run -p vpqc-cli -- keygen --purpose encrypt --out alice

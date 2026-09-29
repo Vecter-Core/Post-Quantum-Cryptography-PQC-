@@ -5,7 +5,7 @@ require_relative "vpqc/native"
 
 # Post-quantum cryptography with safe defaults. Pre-release and unaudited.
 module Vpqc
-  PROFILES = { standard: 1, fast_auth: 2, cnsa2: 3 }.freeze
+  PROFILES = { standard: 1, fast_auth: 2, cnsa2: 3, high: 4 }.freeze
 
   # Base class for failures reported by the native library.
   class Error < StandardError

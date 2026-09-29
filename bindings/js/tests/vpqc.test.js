@@ -10,7 +10,7 @@ function throwsCode(fn, code) {
 }
 
 test("encrypt round trip, all profiles", () => {
-  for (const profile of ["standard", "fast-auth", "cnsa2", undefined]) {
+  for (const profile of ["standard", "fast-auth", "cnsa2", "high", undefined]) {
     const keys = vpqc.generateEncryptionKeypair(profile);
     const sealed = vpqc.seal(keys.publicKey, enc.encode("secret"), enc.encode("ctx"));
     assert.equal(dec.decode(vpqc.unseal(keys.secretKey, sealed, enc.encode("ctx"))), "secret");
@@ -31,7 +31,7 @@ test("wrong aad / wrong key / tampering", () => {
 });
 
 test("sign / verify", () => {
-  for (const profile of ["standard", "fast-auth", "cnsa2"]) {
+  for (const profile of ["standard", "fast-auth", "cnsa2", "high"]) {
     const keys = vpqc.generateSigningKeypair(profile);
     const sig = vpqc.sign(keys.secretKey, enc.encode("msg"), enc.encode("app/v1"));
     vpqc.verify(keys.publicKey, enc.encode("msg"), enc.encode("app/v1"), sig);

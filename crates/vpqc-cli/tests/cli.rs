@@ -172,7 +172,7 @@ fn fast_auth_inspect_warns_classical() {
 fn profiles_lists_all() {
     let out = ok(&["profiles"]);
     let text = String::from_utf8_lossy(&out.stdout);
-    for name in ["standard", "fast-auth", "cnsa2"] {
+    for name in ["standard", "fast-auth", "cnsa2", "high"] {
         assert!(text.contains(name));
     }
 }

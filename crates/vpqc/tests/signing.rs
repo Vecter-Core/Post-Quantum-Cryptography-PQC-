@@ -202,3 +202,68 @@ fn ml_dsa_variants_round_trip() {
         assert!(scheme.verify(&pk, MSG, b"x", &sig).is_err());
     }
 }
+
+/// The `high` composite (ECDSA-P384 + ML-DSA-87) requires both halves, rejects high-S and
+/// cannot be split into standalone signatures.
+#[test]
+fn high_profile_composite_semantics() {
+    let kp = signing::generate(Profile::High).unwrap();
+    assert_eq!(
+        kp.public.algorithm(),
+        AlgorithmId::Sig(SigId::EcdsaP384MlDsa87)
+    );
+    assert_eq!(kp.public.as_bytes().len(), 97 + 2592);
+    let sig = signing::sign(&kp.secret, MSG, CTX).unwrap();
+    signing::verify(&kp.public, MSG, CTX, &sig).unwrap();
+
+    let parsed = DetachedSignature::decode(&sig).unwrap();
+    assert_eq!(parsed.bytes.len(), 96 + 4627);
+
+    // Break each half alone.
+    for offset in [10usize, 96 + 10] {
+        let mut bad = parsed.clone();
+        bad.bytes[offset] ^= 1;
+        assert!(
+            signing::verify(&kp.public, MSG, CTX, &bad.encode()).is_err(),
+            "offset {offset}"
+        );
+    }
+
+    // High-S malleation of the ECDSA half must be rejected: s -> n - s.
+    const N: [u8; 48] = [
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+        0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xc7, 0x63, 0x4d, 0x81, 0xf4, 0x37,
+        0x2d, 0xdf, 0x58, 0x1a, 0x0d, 0xb2, 0x48, 0xb0, 0xa7, 0x7a, 0xec, 0xec, 0x19, 0x6a, 0xcc,
+        0xc5, 0x29, 0x73,
+    ];
+    let mut flipped = parsed.clone();
+    let s = &mut flipped.bytes[48..96];
+    let mut borrow = 0i16;
+    for i in (0..48).rev() {
+        let d = N[i] as i16 - s[i] as i16 - borrow;
+        borrow = i16::from(d < 0);
+        s[i] = d as u8;
+    }
+    assert!(
+        signing::verify(&kp.public, MSG, CTX, &flipped.encode()).is_err(),
+        "malleated (high-S) signature was accepted"
+    );
+
+    // Relabel / strip.
+    let ed_pk = vpqc::PublicKey::new(
+        AlgorithmId::Sig(SigId::MlDsa87),
+        kp.public.as_bytes()[97..].to_vec(),
+    );
+    let stripped = DetachedSignature {
+        algorithm: SigId::MlDsa87,
+        bytes: parsed.bytes[96..].to_vec(),
+    }
+    .encode();
+    assert!(signing::verify(&ed_pk, MSG, CTX, &stripped).is_err());
+    let relabelled = DetachedSignature {
+        algorithm: SigId::Ed25519MlDsa65,
+        bytes: parsed.bytes.clone(),
+    }
+    .encode();
+    assert!(signing::verify(&kp.public, MSG, CTX, &relabelled).is_err());
+}

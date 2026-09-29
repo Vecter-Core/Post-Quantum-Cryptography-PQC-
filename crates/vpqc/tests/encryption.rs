@@ -222,3 +222,41 @@ fn invalid_public_key_is_rejected() {
     let short = vpqc::PublicKey::new(kp.public.algorithm(), vec![0; 10]);
     assert!(kem.encapsulate(&short, &mut vpqc::OsRng).is_err());
 }
+
+#[test]
+fn high_profile_kem_properties() {
+    let kem = vpqc::kem(KemId::MlKem1024P384).unwrap();
+    let kp = kem.generate(&mut vpqc::OsRng).unwrap();
+    assert_eq!(kp.public.as_bytes().len(), 1665);
+    let (ct, ss) = kem.encapsulate(&kp.public, &mut vpqc::OsRng).unwrap();
+    assert_eq!(ct.len(), 1665);
+    assert_eq!(
+        kem.decapsulate(&kp.secret, &ct).unwrap().expose(),
+        ss.expose()
+    );
+
+    // A ciphertext whose P-384 point is not on the curve is rejected explicitly.
+    let mut bad = ct.clone();
+    let last = bad.len() - 1;
+    bad[last] ^= 1;
+    assert!(kem.decapsulate(&kp.secret, &bad).is_err());
+    // Corrupting the ML-KEM part yields a different secret (implicit rejection).
+    let mut bad = ct.clone();
+    bad[5] ^= 1;
+    assert_ne!(
+        kem.decapsulate(&kp.secret, &bad).unwrap().expose(),
+        ss.expose()
+    );
+
+    // Public key with an off-curve point is rejected at encapsulation.
+    let mut pk = kp.public.as_bytes().to_vec();
+    let last = pk.len() - 1;
+    pk[last] ^= 1;
+    let bad_pk = vpqc::PublicKey::new(kp.public.algorithm(), pk);
+    assert!(kem.encapsulate(&bad_pk, &mut vpqc::OsRng).is_err());
+
+    // End-to-end through the sealed box.
+    let keys = encryption::generate(Profile::High).unwrap();
+    let sealed = encryption::seal(&keys.public, MSG, b"").unwrap();
+    assert_eq!(encryption::open(&keys.secret, &sealed, b"").unwrap(), MSG);
+}

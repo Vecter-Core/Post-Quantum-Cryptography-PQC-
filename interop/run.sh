@@ -35,7 +35,7 @@ py()   { "$PYTHON" "$ROOT/interop/drivers/py_driver.py" "$@"; }
 node_() { "$NODE" "$ROOT/interop/drivers/node_driver.js" "$@"; }
 go_() { # go driver takes numeric profile ids
   if [ "$1" = keygen ]; then
-    local id; case "$3" in standard) id=1;; fast-auth) id=2;; cnsa2) id=3;; esac
+    local id; case "$3" in standard) id=1;; fast-auth) id=2;; cnsa2) id=3;; high) id=4;; esac
     "$GO_DRIVER" keygen "$2" "$id" "$4"
   else "$GO_DRIVER" "$@"; fi
 }
@@ -61,7 +61,7 @@ if [ "${INTEROP_JAVA:-0}" = 1 ]; then
     -d "$JAVA_OUT" "$ROOT/interop/drivers/JavaDriver.java" 2>&1 | grep -v -e JAVA_TOOL_OPTIONS -e "^Note:" || true
   IMPLS+=(java)
 fi
-PROFILES=(standard fast-auth cnsa2)
+PROFILES=(standard fast-auth cnsa2 high)
 fail=0; total=0
 expect_ok()   { total=$((total+1)); if ! "$@" 2>"$WORK/err"; then echo "FAIL (expected success): $*"; cat "$WORK/err"; fail=$((fail+1)); fi; }
 expect_fail() { total=$((total+1)); if "$@" 2>/dev/null; then echo "FAIL (expected rejection): $*"; fail=$((fail+1)); fi; }

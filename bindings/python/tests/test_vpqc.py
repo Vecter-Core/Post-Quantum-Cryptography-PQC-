@@ -4,7 +4,7 @@ import vpqc
 
 
 def test_encrypt_round_trip_all_profiles():
-    for profile in ("standard", "fast-auth", "cnsa2"):
+    for profile in ("standard", "fast-auth", "cnsa2", "high"):
         keys = vpqc.generate_encryption_keypair(profile)
         sealed = vpqc.seal(keys.public, b"secret", aad=b"ctx")
         assert vpqc.unseal(keys.secret, sealed, aad=b"ctx") == b"secret"
@@ -31,7 +31,7 @@ def test_tampering_is_detected():
 
 
 def test_sign_verify():
-    for profile in ("standard", "fast-auth", "cnsa2"):
+    for profile in ("standard", "fast-auth", "cnsa2", "high"):
         keys = vpqc.generate_signing_keypair(profile)
         sig = vpqc.sign(keys.secret, b"msg", context=b"app/v1")
         vpqc.verify(keys.public, b"msg", sig, context=b"app/v1")
@@ -96,7 +96,7 @@ def test_large_message():
 
 def test_profiles():
     names = {p["name"] for p in vpqc.profiles()}
-    assert names == {"standard", "fast-auth", "cnsa2"}
+    assert names == {"standard", "fast-auth", "cnsa2", "high"}
 
 
 def test_interop_with_c_abi_format(tmp_path):

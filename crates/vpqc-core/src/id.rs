@@ -13,6 +13,8 @@ pub enum KemId {
     MlKem768,
     /// ML-KEM-1024 alone (FIPS 203).
     MlKem1024,
+    /// MLKEM1024-P384: ML-KEM-1024 + NIST P-384 (draft-irtf-cfrg-concrete-hybrid-kems).
+    MlKem1024P384,
 }
 
 impl KemId {
@@ -22,6 +24,7 @@ impl KemId {
             KemId::XWing => 0x0001,
             KemId::MlKem768 => 0x0002,
             KemId::MlKem1024 => 0x0003,
+            KemId::MlKem1024P384 => 0x0004,
         }
     }
 
@@ -31,6 +34,7 @@ impl KemId {
             0x0001 => Ok(KemId::XWing),
             0x0002 => Ok(KemId::MlKem768),
             0x0003 => Ok(KemId::MlKem1024),
+            0x0004 => Ok(KemId::MlKem1024P384),
             _ => Err(Error::Unsupported("unknown KEM id")),
         }
     }
@@ -41,12 +45,13 @@ impl KemId {
             KemId::XWing => "X-Wing (X25519+ML-KEM-768)",
             KemId::MlKem768 => "ML-KEM-768",
             KemId::MlKem1024 => "ML-KEM-1024",
+            KemId::MlKem1024P384 => "MLKEM1024-P384 (P-384+ML-KEM-1024)",
         }
     }
 
     /// Whether the KEM combines a classical and a post-quantum component.
     pub const fn is_hybrid(self) -> bool {
-        matches!(self, KemId::XWing)
+        matches!(self, KemId::XWing | KemId::MlKem1024P384)
     }
 }
 
@@ -62,6 +67,8 @@ pub enum SigId {
     MlDsa87,
     /// Composite Ed25519 + ML-DSA-65: both signatures must verify.
     Ed25519MlDsa65,
+    /// Composite ECDSA-P384 + ML-DSA-87: both signatures must verify.
+    EcdsaP384MlDsa87,
 }
 
 impl SigId {
@@ -72,6 +79,7 @@ impl SigId {
             SigId::MlDsa65 => 0x0102,
             SigId::MlDsa87 => 0x0103,
             SigId::Ed25519MlDsa65 => 0x0104,
+            SigId::EcdsaP384MlDsa87 => 0x0105,
         }
     }
 
@@ -82,6 +90,7 @@ impl SigId {
             0x0102 => Ok(SigId::MlDsa65),
             0x0103 => Ok(SigId::MlDsa87),
             0x0104 => Ok(SigId::Ed25519MlDsa65),
+            0x0105 => Ok(SigId::EcdsaP384MlDsa87),
             _ => Err(Error::Unsupported("unknown signature id")),
         }
     }
@@ -93,6 +102,7 @@ impl SigId {
             SigId::MlDsa65 => "ML-DSA-65",
             SigId::MlDsa87 => "ML-DSA-87",
             SigId::Ed25519MlDsa65 => "Ed25519+ML-DSA-65 (composite)",
+            SigId::EcdsaP384MlDsa87 => "ECDSA-P384+ML-DSA-87 (composite)",
         }
     }
 

@@ -13,6 +13,7 @@ vpqc-backend-libcrux.workspace = true
 x25519-dalek.workspace = true
 ed25519-dalek.workspace = true
 sha3.workspace = true
+p384.workspace = true
 libcrux-sha3.workspace = true
 subtle.workspace = true
 zeroize.workspace = true

@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-var profiles = []Profile{ProfileStandard, ProfileFastAuth, ProfileCNSA2}
+var profiles = []Profile{ProfileStandard, ProfileFastAuth, ProfileCNSA2, ProfileHigh}
 
 func TestABIVersion(t *testing.T) {
 	if ABIVersion()>>16 != 1 {

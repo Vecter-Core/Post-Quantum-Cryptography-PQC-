@@ -18,7 +18,9 @@
 | Chữ ký composite Ed25519 + ML-DSA-65 | Xong | Nhãn vpqc riêng, chưa tương thích dây với draft LAMPS (xem ADR-0005) |
 | Phong bì `sealed`, chữ ký tách rời, khoá dạng armor | Xong | Chống hạ cấp: header + KEM ciphertext nằm trong KDF và AAD |
 | API dễ dùng `vpqc` (`seal/open`, `sign/verify`) và CLI `vpqc` | Xong | 3 profile: `standard`, `fast-auth`, `cnsa2` |
-| Profile `high` (P-384 + ML-KEM-1024), `archive` (SLH-DSA), `fips` (aws-lc-rs) | **Chưa** | Cần crate P-384, SLH-DSA (RustCrypto còn ở bản RC), backend aws-lc-rs |
+| Profile `high`: KEM lai MLKEM1024-P384 + chữ ký composite ECDSA-P384 + ML-DSA-87 | Xong | KEM **vượt 10/10 vector chính thức** của draft CFRG concrete-hybrid-kems; ECDSA low-S bắt buộc (đã kiểm bằng đột biến) |
+| Profile `archive` (SLH-DSA) | **Hoãn có chủ đích** | Xem ADR-0006: chỉ có `slh-dsa` bản RC, chưa kiểm toán, không có bản thứ hai để đối chiếu |
+| Profile `fips` (backend aws-lc-rs, FIPS 140-3) | **Chưa** | Cần backend aws-lc-rs |
 | Backend RustCrypto làm backend chạy thật (`no_std`, WASM) | **Chưa** | Hiện chỉ dùng cho test vi sai; các crate hiện dùng `std` |
 | KAT ACVP cho ML-KEM-1024 / ML-DSA, fuzzing, đo constant-time | **Chưa** | Giai đoạn 1 còn lại / giai đoạn 5 |
 | C ABI (`vpqc-ffi`, header `vpqc.h`) | Xong | Panic không vượt biên; buffer xoá bộ nhớ khi giải phóng; ASan/UBSan/LSan sạch; kiểm cả C++ và liên kết tĩnh |
@@ -27,7 +29,7 @@
 | Go (cgo, liên kết tĩnh) | Xong | `bindings/go`: `errors.Is`, `-race` sạch, khoá bí mật không in ra qua `fmt`; mới thử trên Linux |
 | Java (Panama FFM, JDK 21 preview / 22+ final) | Xong | `bindings/java`: Maven, `DecryptionException`…, `SecretKey.destroy()`; 10 test. **Chưa có JCA Provider** (`KeyPairGenerator`/`Signature`) |
 | PHP (FFI), Ruby (ffi gem) | Xong | `bindings/php` (29 kiểm tra), `bindings/ruby` (9 test) |
-| **Test tương tác chéo ngôn ngữ** (`interop/run.sh`) | Xong | CLI Rust, Python, Node, Go, Java, PHP, Ruby: **4130 kiểm tra, 0 lỗi** (mọi tổ hợp sinh khoá × mã hoá × giải mã, ký × xác minh, sai context, dữ liệu bị sửa) |
+| **Test tương tác chéo ngôn ngữ** (`interop/run.sh`) | Xong | CLI Rust, Python, Node, Go, Java, PHP, Ruby: **5502 kiểm tra, 0 lỗi (4 profile)** (mọi tổ hợp sinh khoá × mã hoá × giải mã, ký × xác minh, sai context, dữ liệu bị sửa) |
 | Parser: fuzz nhẹ (>600.000 đầu vào ngẫu nhiên/biến dị) | Xong | `vpqc-format/tests/robustness.rs`; fuzz theo độ phủ (`cargo-fuzz`) vẫn chưa |
 | .NET, Swift, Kotlin (JCA), Dart | **Chưa** | Chưa có toolchain trong môi trường này để kiểm chứng; dùng chung C ABI |
 | Phát hành gói (PyPI wheel đa nền tảng, npm, thư viện C dựng sẵn cho Go) | **Chưa** | Hiện phải build từ mã nguồn; CI đã khai báo nhưng mới chạy thử trên Linux |
