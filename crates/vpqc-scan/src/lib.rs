@@ -18,4 +18,4 @@ mod walk;
 
 pub use model::{Family, Finding, Purpose, Report, Risk, Source};
 pub use output::{to_cbom, to_json, to_text};
-pub use walk::{Options, scan_path};
+pub use walk::{Options, scan_bytes, scan_path};

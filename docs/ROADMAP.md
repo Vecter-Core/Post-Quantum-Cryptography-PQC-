@@ -22,7 +22,7 @@
 | Profile `archive` (SLH-DSA) | **Hoãn có chủ đích** | Xem ADR-0006: chỉ có `slh-dsa` bản RC, chưa kiểm toán, không có bản thứ hai để đối chiếu |
 | Profile `fips` (backend aws-lc-rs, FIPS 140-3) | **Chưa** | Cần backend aws-lc-rs |
 | Backend RustCrypto làm backend chạy thật (`no_std`, WASM) | **Chưa** | Hiện chỉ dùng cho test vi sai; các crate hiện dùng `std` |
-| KAT ACVP cho ML-KEM-1024 / ML-DSA, fuzzing, đo constant-time | **Chưa** | Giai đoạn 1 còn lại / giai đoạn 5 |
+| KAT ACVP cho ML-KEM-1024 / ML-DSA, đo constant-time | **Chưa** | Giai đoạn 1 còn lại / giai đoạn 5 (fuzzing: xem dòng dưới) |
 | C ABI (`vpqc-ffi`, header `vpqc.h`) | Xong | Panic không vượt biên; buffer xoá bộ nhớ khi giải phóng; ASan/UBSan/LSan sạch; kiểm cả C++ và liên kết tĩnh |
 | Python (PyO3 + maturin, wheel `abi3` ≥ 3.9) | Xong | `bindings/python`: kiểu dữ liệu, type hints, hệ exception; 13 test |
 | JavaScript/TypeScript (WASM, Node + web) | Xong | `bindings/js`: ~570 KB wasm, ngẫu nhiên từ `crypto.getRandomValues`; 7 test |
@@ -30,7 +30,8 @@
 | Java (Panama FFM, JDK 21 preview / 22+ final) | Xong | `bindings/java`: Maven, `DecryptionException`…, `SecretKey.destroy()`; 10 test. **JCA Provider** "VPQC": `KeyPairGenerator`, `Signature` (context bắt buộc qua `VpqcSignatureParameterSpec`), `KEM` (JDK 21), `KeyFactory`; 7 test chỉ dùng API JCA chuẩn |
 | PHP (FFI), Ruby (ffi gem) | Xong | `bindings/php` (29 kiểm tra), `bindings/ruby` (9 test) |
 | **Test tương tác chéo ngôn ngữ** (`interop/run.sh`) | Xong | CLI Rust, Python, Node, Go, Java, PHP, Ruby: **5502 kiểm tra, 0 lỗi (4 profile)** (mọi tổ hợp sinh khoá × mã hoá × giải mã, ký × xác minh, sai context, dữ liệu bị sửa) |
-| Parser: fuzz nhẹ (>600.000 đầu vào ngẫu nhiên/biến dị) | Xong | `vpqc-format/tests/robustness.rs`; fuzz theo độ phủ (`cargo-fuzz`) vẫn chưa |
+| Parser: fuzz nhẹ (>600.000 đầu vào ngẫu nhiên/biến dị) | Xong | `vpqc-format/tests/robustness.rs` |
+| **Fuzz theo độ phủ** (`fuzz/`, cargo-fuzz + libFuzzer + ASan): 6 đích (định dạng, sealed box, streaming vi sai pull/push, chữ ký, HPKE, scan) | Xong (vòng đầu) | ~4,9 triệu lần thực thi, 10 phút/đích, **0 lỗi**; hiệu lực đã kiểm bằng cài lỗi (cả 2 lỗi cài vào bị bắt < 3 phút); CI chạy 60 s/đích mỗi lần push. Mục tiêu 24 h/đích trước 1.0 **chưa đạt** |
 | Công cụ di trú `vpqc scan`: kiểm kê mật mã (mã nguồn, cấu hình, chứng chỉ X.509, khoá), xếp hạng T0-T4, xuất **CBOM CycloneDX 1.6** | Xong | `crates/vpqc-scan`; chứng chỉ/khoá phân tích chính xác, mã nguồn theo mẫu (heuristic, ghi rõ); CBOM **hợp lệ theo schema chính thức**; `--fail-on` để chặn trong CI; không bao giờ in khoá |
 | **HPKE** (`crates/vpqc-hpke`, RFC 9180bis + draft-ietf-hpke-pq): X-Wing, MLKEM1024-P384, ML-KEM-768/1024; HKDF-SHA2 và SHAKE; AES-GCM, ChaCha20-Poly1305 | Xong | **Vượt 5/5 vector chính thức áp dụng được**; chế độ base/PSK, export; khối xây dựng cho MLS/ECH/OHTTP |
 | **TLS 1.3 lai** (`crates/vpqc-tls`): cấu hình rustls + aws-lc-rs với `X25519MLKEM768`, sidecar `vpqc-tls-proxy` (server/client) và `probe` | Xong | Tương tác với **Go `crypto/tls`** (triển khai độc lập) cả hai chiều; chính sách bắt buộc lai hoặc cho phép fallback có ghi log. Chứng chỉ vẫn cổ điển (PKI PQ chưa triển khai được trên web) |

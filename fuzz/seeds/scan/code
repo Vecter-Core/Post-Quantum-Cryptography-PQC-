@@ -1,0 +1,2 @@
+k = rsa.generate_private_key(65537, 2048)
+ctx.set_ecdh_curve('X25519MLKEM768')

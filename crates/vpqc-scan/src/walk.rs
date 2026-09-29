@@ -122,35 +122,47 @@ fn scan_file(path: &Path, size: u64, options: &Options, report: &mut Report) {
         }
     }
     let display = path.to_string_lossy().to_string();
+    analyse_bytes(&display, &e, &bytes, options, report);
+}
 
+/// Scan content held in memory as if it were a file named `name` (the extension selects DER
+/// certificate parsing and PEM handling). Size and documentation filters do not apply.
+pub fn scan_bytes(name: &str, bytes: &[u8], options: &Options) -> Report {
+    let mut report = Report::default();
+    let e = ext(Path::new(name));
+    analyse_bytes(name, &e, bytes, options, &mut report);
+    report
+}
+
+fn analyse_bytes(display: &str, e: &str, bytes: &[u8], options: &Options, report: &mut Report) {
     // Binary DER certificates.
-    if matches!(e.as_str(), "der" | "cer" | "crt") && !bytes.starts_with(b"-----") {
-        if certs::analyse_der(&display, &bytes, &mut report.findings) {
+    if matches!(e, "der" | "cer" | "crt") && !bytes.starts_with(b"-----") {
+        if certs::analyse_der(display, bytes, &mut report.findings) {
             report.files_scanned += 1;
         } else {
             report.files_skipped += 1;
         }
         return;
     }
-    if bytes[..bytes.len().min(8192)].contains(&0) {
+    if bytes.is_empty() || bytes[..bytes.len().min(8192)].contains(&0) {
         report.files_skipped += 1;
         return;
     }
-    let Ok(text) = std::str::from_utf8(&bytes) else {
+    let Ok(text) = std::str::from_utf8(bytes) else {
         report.files_skipped += 1;
         return;
     };
     report.files_scanned += 1;
 
     if text.contains("-----BEGIN ") || text.contains("ssh-") || text.contains("ecdsa-sha2-") {
-        certs::analyse_pem_text(&display, text, &mut report.findings);
+        certs::analyse_pem_text(display, text, &mut report.findings);
     }
     // Do not run the text rules over base64 key blocks: they only produce noise.
-    if text.contains("-----BEGIN ") && matches!(e.as_str(), "pem" | "crt" | "cer" | "key" | "pub") {
+    if text.contains("-----BEGIN ") && matches!(e, "pem" | "crt" | "cer" | "key" | "pub") {
         return;
     }
     scan_text(
-        &display,
+        display,
         text,
         options.include_comments,
         &mut report.findings,

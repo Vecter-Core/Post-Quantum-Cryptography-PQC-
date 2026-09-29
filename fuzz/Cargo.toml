@@ -1,0 +1,58 @@
+[package]
+name = "vpqc-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+vpqc = { path = "../crates/vpqc" }
+vpqc-core = { path = "../crates/vpqc-core" }
+vpqc-format = { path = "../crates/vpqc-format" }
+vpqc-hpke = { path = "../crates/vpqc-hpke" }
+vpqc-scan = { path = "../crates/vpqc-scan" }
+
+[[bin]]
+name = "parse_formats"
+path = "fuzz_targets/parse_formats.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "sealed_box"
+path = "fuzz_targets/sealed_box.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stream"
+path = "fuzz_targets/stream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "signatures"
+path = "fuzz_targets/signatures.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "hpke"
+path = "fuzz_targets/hpke.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "scan"
+path = "fuzz_targets/scan.rs"
+test = false
+doc = false
+bench = false

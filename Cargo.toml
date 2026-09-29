@@ -13,7 +13,7 @@ members = [
     "crates/vpqc-tls",
 ]
 
-exclude = ["bindings/python", "bindings/js"]
+exclude = ["bindings/python", "bindings/js", "fuzz"]
 
 [workspace.package]
 version = "0.0.1"
