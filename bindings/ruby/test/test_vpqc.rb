@@ -56,6 +56,21 @@ class VpqcTest < Minitest::Test
     assert_raises(Vpqc::InvalidInputError) { Vpqc.generate_encryption_keypair(:nope) }
   end
 
+  def test_protected_secret_key
+    k = Vpqc.generate_encryption_keypair
+    text = k.secret.to_protected_text("mật khẩu đủ dài", memory_kib: 8192)
+    assert text.start_with?("-----BEGIN VPQC PROTECTED SECRET KEY-----")
+    assert Vpqc::SecretKey.protected?(text)
+    refute Vpqc::SecretKey.protected?(k.secret.to_text)
+    sk = Vpqc::SecretKey.from_protected(text, "mật khẩu đủ dài")
+    assert_equal k.secret.to_bytes, sk.to_bytes
+    assert_equal "p".b, Vpqc.unseal(sk, Vpqc.seal(k.public, "p"))
+    assert_raises(Vpqc::DecryptionError) { Vpqc::SecretKey.from_protected(text, "wrong") }
+    assert_raises(Vpqc::InvalidInputError) { k.secret.to_protected_text("x", memory_kib: 1024) }
+    assert_raises(Vpqc::InvalidInputError) { k.secret.to_protected_text("") }
+    assert_operator(Vpqc.abi_version & 0xffff, :>=, 1)
+  end
+
   def test_key_text
     k = Vpqc.generate_encryption_keypair
     text = k.public.to_text

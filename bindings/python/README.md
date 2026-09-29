@@ -15,6 +15,11 @@ assert vpqc.unseal(keys.secret, sealed, aad=b"invoice-42") == b"secret"
 signer = vpqc.generate_signing_keypair()
 sig = vpqc.sign(signer.secret, b"release.tar.gz", context=b"my-app/release-v1")
 vpqc.verify(signer.public, b"release.tar.gz", sig, context=b"my-app/release-v1")  # raises on failure
+
+# Secret keys at rest: encrypted under a passphrase (Argon2id + XChaCha20-Poly1305), readable
+# by every vpqc binding and `vpqc` CLI (`vpqc keygen --passphrase`).
+open("signer.key", "w").write(signer.secret.to_protected_text("a long passphrase"))
+sk = vpqc.SecretKey.load("signer.key", passphrase="a long passphrase")
 ```
 
 Profiles: `"standard"` (default), `"fast-auth"` (classical Ed25519 signatures, short-lived

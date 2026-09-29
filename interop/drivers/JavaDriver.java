@@ -56,6 +56,10 @@ public final class JavaDriver {
                         Path.of(args[3]), Path.of(args[4]), args[2].getBytes(StandardCharsets.UTF_8));
                 case "decrypt-file" -> Vpqc.decryptFile(SecretKey.fromText(text(args[1])), Path.of(args[3]),
                         Path.of(args[4]), args[2].getBytes(StandardCharsets.UTF_8));
+                case "protect" -> write(args[3], SecretKey.fromText(text(args[1]))
+                        .toProtectedText(args[2].toCharArray(), 8192).getBytes(StandardCharsets.UTF_8));
+                case "unprotect" -> write(args[3], SecretKey.fromProtected(text(args[1]), args[2].toCharArray())
+                        .toText().getBytes(StandardCharsets.UTF_8));
                 default -> throw new IllegalArgumentException("unknown command " + cmd);
             }
         } catch (VpqcException | IllegalArgumentException e) {

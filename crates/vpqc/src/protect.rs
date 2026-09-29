@@ -193,6 +193,15 @@ pub fn unprotect_with_kek(bytes: &[u8], kek: &[u8]) -> Result<SecretKey> {
     open(&object, kek)
 }
 
+/// Is `bytes` a protected secret key, binary or armored? (A quick check, not a full parse.)
+pub fn is_protected(bytes: &[u8]) -> bool {
+    is_protected_secret_key(bytes)
+        || std::str::from_utf8(bytes).is_ok_and(|t| {
+            t.trim_start()
+                .starts_with("-----BEGIN VPQC PROTECTED SECRET KEY-----")
+        })
+}
+
 /// How a protected key (binary or armored) is protected, without decrypting it.
 pub fn protection(bytes: &[u8]) -> Result<Protection> {
     Ok(parse(bytes)?.protection)

@@ -38,7 +38,8 @@ impl ProtectArgs {
 }
 
 fn passphrase_from_env() -> Result<Option<Zeroizing<String>>, String> {
-    if let Some(path) = std::env::var_os("VPQC_PASSPHRASE_FILE") {
+    // Empty variables count as unset.
+    if let Some(path) = std::env::var_os("VPQC_PASSPHRASE_FILE").filter(|p| !p.is_empty()) {
         let text =
             Zeroizing::new(fs::read_to_string(&path).map_err(|e| {
                 format!("VPQC_PASSPHRASE_FILE {}: {e}", Path::new(&path).display())
@@ -47,7 +48,10 @@ fn passphrase_from_env() -> Result<Option<Zeroizing<String>>, String> {
         let line = line.strip_suffix('\r').unwrap_or(line);
         return Ok(Some(Zeroizing::new(line.to_owned())));
     }
-    Ok(std::env::var("VPQC_PASSPHRASE").ok().map(Zeroizing::new))
+    Ok(std::env::var("VPQC_PASSPHRASE")
+        .ok()
+        .filter(|p| !p.is_empty())
+        .map(Zeroizing::new))
 }
 
 fn prompt(text: &str) -> Result<Zeroizing<String>, String> {
@@ -126,11 +130,7 @@ pub fn encode(secret: &SecretKey, how: &ProtectArgs) -> Result<Zeroizing<String>
 
 /// A short description of how a key file is protected, or `None` if it is not.
 pub fn describe(bytes: &[u8]) -> Option<String> {
-    let text_protected = std::str::from_utf8(bytes).is_ok_and(|t| {
-        t.trim_start()
-            .starts_with("-----BEGIN VPQC PROTECTED SECRET KEY")
-    });
-    if !text_protected && !protect::is_protected_secret_key(bytes) {
+    if !protect::is_protected(bytes) {
         return None;
     }
     Some(match protect::protection(bytes) {

@@ -6,7 +6,7 @@
 //! string (`DECRYPTION_FAILED`, `VERIFICATION_FAILED`, `INVALID_INPUT`, `BACKEND`).
 
 use js_sys::Reflect;
-use vpqc::{Error, Profile, encryption, keys, signing};
+use vpqc::{Error, Profile, encryption, keys, protect, signing};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
@@ -135,6 +135,39 @@ pub fn secret_key_from_text(text: &str) -> Result<Vec<u8>, JsValue> {
     Ok(keys::secret_to_bytes(
         &keys::secret_from_text(text).map_err(fail)?,
     ))
+}
+
+/// Protect a binary secret key under a passphrase (Argon2id, XChaCha20-Poly1305; ADR-0013).
+/// Returns the armored `VPQC PROTECTED SECRET KEY` text, readable by every vpqc binding and the
+/// CLI. `memoryKib` is the Argon2id memory (8192 to 1048576; default 65536 = 64 MiB).
+#[wasm_bindgen(js_name = protectSecretKey)]
+pub fn protect_secret_key(
+    secret_key: &[u8],
+    passphrase: &str,
+    #[wasm_bindgen(js_name = memoryKib)] memory_kib: Option<u32>,
+) -> Result<String, JsValue> {
+    let sk = keys::secret_from_bytes(secret_key).map_err(fail)?;
+    let params = protect::KdfParams {
+        memory_kib: memory_kib.unwrap_or(64 * 1024),
+        ..protect::KdfParams::default()
+    };
+    let bytes = protect::protect_with_passphrase(&sk, passphrase.as_bytes(), params).map_err(fail)?;
+    Ok(protect::to_text(&bytes))
+}
+
+/// Decrypt a passphrase-protected secret key (armored text) into its binary encoding. Throws
+/// `DECRYPTION_FAILED` for a wrong passphrase or a modified key.
+#[wasm_bindgen(js_name = unprotectSecretKey)]
+pub fn unprotect_secret_key(text: &str, passphrase: &str) -> Result<Vec<u8>, JsValue> {
+    let sk = protect::unprotect_with_passphrase(text.as_bytes(), passphrase.as_bytes())
+        .map_err(fail)?;
+    Ok(keys::secret_to_bytes(&sk))
+}
+
+/// Is `text` a protected secret key?
+#[wasm_bindgen(js_name = isProtectedSecretKey)]
+pub fn is_protected_secret_key(text: &str) -> bool {
+    protect::is_protected(text.as_bytes())
 }
 
 fn fail_io(e: std::io::Error) -> JsValue {

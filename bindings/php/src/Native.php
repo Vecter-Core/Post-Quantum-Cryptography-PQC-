@@ -32,6 +32,9 @@ int vpqc_sign(const char *sk, size_t sk_len, const char *msg, size_t msg_len, co
 int vpqc_verify(const char *pk, size_t pk_len, const char *msg, size_t msg_len, const char *ctx, size_t ctx_len, const char *sig, size_t sig_len);
 int vpqc_key_to_text(int kind, const char *key, size_t key_len, vpqc_buf *out);
 int vpqc_key_from_text(int kind, const char *text, size_t text_len, vpqc_buf *out);
+int vpqc_secret_key_protect(const char *sk, size_t sk_len, const char *pass, size_t pass_len, uint32_t memory_kib, vpqc_buf *out);
+int vpqc_secret_key_unprotect(const char *data, size_t data_len, const char *pass, size_t pass_len, vpqc_buf *out);
+int vpqc_secret_key_is_protected(const char *data, size_t data_len);
 int vpqc_encrypt_file(const char *pk, size_t pk_len, const char *aad, size_t aad_len, const char *in, const char *out, uint64_t *n);
 int vpqc_decrypt_file(const char *sk, size_t sk_len, const char *aad, size_t aad_len, const char *in, const char *out, uint64_t *n);
 int vpqc_encrypt_file_multi(const unsigned char **pks, const size_t *pk_lens, size_t count, const char *aad, size_t aad_len, const char *in, const char *out, uint64_t *n);
@@ -146,6 +149,29 @@ C;
         $out = $ffi->new('vpqc_buf');
         self::check($ffi->vpqc_key_to_text($kind, $key, strlen($key), FFI::addr($out)));
         return self::take($out);
+    }
+
+    /** Protected secret key text (ABI 1.1, ADR-0013). */
+    public static function protectSecretKey(string $key, string $passphrase, int $memoryKib): string
+    {
+        $ffi = self::ffi();
+        $out = $ffi->new('vpqc_buf');
+        self::check($ffi->vpqc_secret_key_protect($key, strlen($key), $passphrase, strlen($passphrase), $memoryKib, FFI::addr($out)));
+        return self::take($out);
+    }
+
+    /** Binary secret key from a passphrase-protected one (ABI 1.1). */
+    public static function unprotectSecretKey(string $data, string $passphrase): string
+    {
+        $ffi = self::ffi();
+        $out = $ffi->new('vpqc_buf');
+        self::check($ffi->vpqc_secret_key_unprotect($data, strlen($data), $passphrase, strlen($passphrase), FFI::addr($out)));
+        return self::take($out);
+    }
+
+    public static function isProtectedSecretKey(string $data): bool
+    {
+        return self::ffi()->vpqc_secret_key_is_protected($data, strlen($data)) === 1;
     }
 
     public static function keyFromText(int $kind, string $text): string

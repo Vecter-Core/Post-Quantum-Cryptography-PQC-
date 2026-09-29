@@ -82,6 +82,27 @@ class VpqcTest {
     }
 
     @Test
+    void protectedSecretKeys() {
+        KeyPair k = Vpqc.generateEncryptionKeypair(Profile.STANDARD);
+        char[] pass = "mật khẩu đủ dài".toCharArray();
+        String text = k.secretKey().toProtectedText(pass, 8192);
+        assertTrue(text.startsWith("-----BEGIN VPQC PROTECTED SECRET KEY-----"));
+        assertTrue(SecretKey.isProtected(text.getBytes(StandardCharsets.UTF_8)));
+        assertFalse(SecretKey.isProtected(k.secretKey().toBytes()));
+        SecretKey back = SecretKey.fromProtected(text, pass);
+        assertArrayEquals(k.secretKey().toBytes(), back.toBytes());
+        byte[] sealed = Vpqc.seal(k.publicKey(), b("x"), new byte[0]);
+        assertArrayEquals(b("x"), Vpqc.open(back, sealed, new byte[0]));
+        assertThrows(VpqcException.DecryptionException.class,
+                () -> SecretKey.fromProtected(text, "wrong".toCharArray()));
+        assertThrows(VpqcException.InvalidInputException.class,
+                () -> k.secretKey().toProtectedText(pass, 1024));
+        assertThrows(VpqcException.InvalidInputException.class,
+                () -> k.secretKey().toProtectedText(new char[0]));
+        assertTrue((Vpqc.abiVersion() & 0xffff) >= 1);
+    }
+
+    @Test
     void keyText() {
         KeyPair k = Vpqc.generateEncryptionKeypair(Profile.STANDARD);
         String text = k.publicKey().toText();

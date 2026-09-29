@@ -82,6 +82,17 @@ $sk = SecretKey::fromText($a->secret->toText());
 check(Vpqc::open($sk, Vpqc::seal($a->public, 'x'), '') === 'x', 'secret text round trip');
 throws(VpqcException::class, fn () => PublicKey::fromText($a->secret->toText()), 'secret text is not a public key');
 
+// Passphrase-protected secret keys (ABI 1.1).
+$ptext = $a->secret->toProtectedText('mật khẩu đủ dài', 8192);
+check(str_starts_with($ptext, '-----BEGIN VPQC PROTECTED SECRET KEY-----'), 'protected text');
+check(SecretKey::isProtected($ptext) && !SecretKey::isProtected($a->secret->toText()), 'isProtected');
+$psk = SecretKey::fromProtected($ptext, 'mật khẩu đủ dài');
+check($psk->toBytes() === $a->secret->toBytes(), 'protected round trip');
+check(Vpqc::open($psk, Vpqc::seal($a->public, 'p'), '') === 'p', 'recovered key decrypts');
+throws(DecryptionException::class, fn () => SecretKey::fromProtected($ptext, 'wrong'), 'wrong passphrase');
+throws(InvalidInputException::class, fn () => $a->secret->toProtectedText('x', 1024), 'tiny Argon2 memory');
+throws(InvalidInputException::class, fn () => $a->secret->toProtectedText(''), 'empty passphrase');
+check((Vpqc::abiVersion() & 0xffff) >= 1, 'abi minor >= 1');
 check((string) $a->secret === 'SecretKey(<redacted>)', 'secret key __toString redacted');
 ob_start();
 var_dump($a->secret);

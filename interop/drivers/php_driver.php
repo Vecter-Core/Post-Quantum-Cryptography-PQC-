@@ -55,6 +55,12 @@ try {
         case 'decrypt-file': // decrypt-file SECFILE AAD IN OUT
             Vpqc::decryptFile(SecretKey::fromText(file_get_contents($a[0])), $a[2], $a[3], $a[1]);
             break;
+        case 'protect': // protect SECFILE PASSPHRASE OUT
+            file_put_contents($a[2], SecretKey::fromText(file_get_contents($a[0]))->toProtectedText($a[1], 8192));
+            break;
+        case 'unprotect': // unprotect PROTFILE PASSPHRASE OUT
+            file_put_contents($a[2], SecretKey::fromProtected(file_get_contents($a[0]), $a[1])->toText());
+            break;
         default:
             throw new InvalidArgumentException("unknown command $cmd");
     }

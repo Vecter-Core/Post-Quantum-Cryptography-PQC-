@@ -34,6 +34,11 @@ def main(argv):
         vpqc.rewrap_file(vpqc.SecretKey.from_text(Path(a[0]).read_text()), pks, a[2], a[3], aad=a[1].encode())
     elif cmd == "decrypt-file":  # decrypt-file SECFILE AAD IN OUT
         vpqc.decrypt_file(vpqc.SecretKey.from_text(Path(a[0]).read_text()), a[2], a[3], aad=a[1].encode())
+    elif cmd == "protect":  # protect SECFILE PASSPHRASE OUT (plain armored -> protected)
+        sk = vpqc.SecretKey.from_text(Path(a[0]).read_text())
+        Path(a[2]).write_text(sk.to_protected_text(a[1], memory_kib=8192))
+    elif cmd == "unprotect":  # unprotect PROTFILE PASSPHRASE OUT (protected -> plain armored)
+        Path(a[2]).write_text(vpqc.SecretKey.from_protected(Path(a[0]).read_text(), a[1]).to_text())
     else:
         raise SystemExit(f"unknown command {cmd}")
 

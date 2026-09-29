@@ -1,5 +1,5 @@
 /*
- * vpqc C API. Pre-release (unaudited); ABI version 1.0.
+ * vpqc C API. Pre-release (unaudited); ABI version 1.1.
  *
  * Conventions
  *  - Functions return VPQC_OK (0) or a positive error code.
@@ -20,6 +20,7 @@ extern "C" {
 #endif
 
 #define VPQC_ABI_VERSION_MAJOR 1
+#define VPQC_ABI_VERSION_MINOR 1
 
 #define VPQC_OK 0
 #define VPQC_ERR_INVALID_ARGUMENT 1
@@ -85,6 +86,19 @@ int vpqc_verify(const uint8_t *public_key, size_t public_key_len,
  * Secret key text is UNENCRYPTED. */
 int vpqc_key_to_text(int kind, const uint8_t *key, size_t key_len, vpqc_buf *out);
 int vpqc_key_from_text(int kind, const uint8_t *text, size_t text_len, vpqc_buf *out);
+
+/* Secret keys protected at rest by a passphrase (ABI 1.1, ADR-0013: Argon2id + XChaCha20-Poly1305).
+ * protect: binary secret key -> armored "VPQC PROTECTED SECRET KEY" text (no trailing NUL);
+ *   memory_kib = 0 for the default 64 MiB, else 8192..1048576; the passphrase must not be empty.
+ * unprotect: armored or binary protected key -> binary secret key. Wrong passphrase or modified
+ *   data: VPQC_ERR_DECRYPTION_FAILED; KMS/TPM-protected key: VPQC_ERR_INVALID_KEY.
+ * is_protected: 1 if data is a protected secret key, else 0. */
+int vpqc_secret_key_protect(const uint8_t *secret_key, size_t secret_key_len,
+                            const uint8_t *passphrase, size_t passphrase_len,
+                            uint32_t memory_kib, vpqc_buf *out);
+int vpqc_secret_key_unprotect(const uint8_t *data, size_t data_len,
+                              const uint8_t *passphrase, size_t passphrase_len, vpqc_buf *out);
+int vpqc_secret_key_is_protected(const uint8_t *data, size_t data_len);
 
 /* Raw KEM (for protocols / JCA KEM). Shared secret is always 32 bytes.
  * Prefer vpqc_seal / vpqc_open for application data. */

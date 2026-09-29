@@ -266,8 +266,19 @@ vpqc decrypt --key app.protected hoso.vpqc -o hoso.pdf   # mọi lệnh nhận k
 - `vpqc protect` xong, hãy kiểm tra khoá mới tải được rồi **xoá tệp khoá không mã hoá**.
 - Trên máy chủ không có người gõ passphrase: dùng `systemd-creds` (gắn với TPM của máy) hoặc KMS,
   thay vì đặt passphrase trong biến môi trường.
-- Binding các ngôn ngữ hiện vẫn nạp khoá dạng thường: dùng `vpqc unprotect` vào tệp tạm quyền 0600
-  hoặc API Rust `vpqc::protect`.
+- Mọi binding đọc/ghi được khoá bảo vệ bằng passphrase (cùng định dạng, dùng chéo được):
+
+  | Ngôn ngữ | Bảo vệ | Mở |
+  |---|---|---|
+  | Python | `sk.to_protected_text(pw)` | `SecretKey.from_protected(text, pw)`, `SecretKey.load(path, passphrase=pw)` |
+  | JS/TS | `protectSecretKey(sk, pw)` | `unprotectSecretKey(text, pw)` |
+  | Go | `sk.ProtectedText(pw, 0)` | `SecretKeyFromProtected(data, pw)` |
+  | Java | `sk.toProtectedText(char[])` | `SecretKey.fromProtected(text, char[])` |
+  | PHP | `$sk->toProtectedText($pw)` | `SecretKey::fromProtected($text, $pw)` |
+  | Ruby | `sk.to_protected_text(pw)` | `SecretKey.from_protected(text, pw)` |
+  | C | `vpqc_secret_key_protect` | `vpqc_secret_key_unprotect` (ABI 1.1) |
+
+  Khoá do KMS/TPM bảo vệ: dùng CLI (`vpqc protect/unprotect --kms`) hoặc API Rust `vpqc::protect`.
 
 ## 3b. Lỗi và bảo mật khi dùng
 

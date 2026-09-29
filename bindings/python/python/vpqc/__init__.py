@@ -37,6 +37,7 @@ __all__ = [
     "StreamEncryptor",
     "StreamDecryptor",
     "profiles",
+    "is_protected_secret_key",
     "VpqcError",
     "DecryptionError",
     "VerificationError",
@@ -120,6 +121,46 @@ class SecretKey:
     @classmethod
     def from_text(cls, text: str) -> "SecretKey":
         return cls(_vpqc.secret_key_from_text(text))
+
+    def to_protected_text(self, passphrase: Union[str, BytesLike], *, memory_kib: int = 65536) -> str:
+        """Armored text encrypted under ``passphrase`` (Argon2id, XChaCha20-Poly1305; ADR-0013).
+
+        Readable by ``SecretKey.from_protected``, by every vpqc binding and by the ``vpqc`` CLI.
+        ``memory_kib`` is the Argon2id memory (8192 to 1048576; default 64 MiB).
+        """
+        return _vpqc.protect_secret_key(self.data, _passphrase(passphrase), memory_kib)
+
+    @classmethod
+    def from_protected(cls, data: Union[str, BytesLike], passphrase: Union[str, BytesLike]) -> "SecretKey":
+        """Decrypt a passphrase-protected key (armored text or binary).
+
+        Raises ``DecryptionError`` for a wrong passphrase or a modified key.
+        """
+        raw = data.encode() if isinstance(data, str) else _b(data)
+        return cls(_vpqc.unprotect_secret_key(raw, _passphrase(passphrase)))
+
+    @classmethod
+    def load(cls, path: "os.PathLike[str] | str", *, passphrase: Union[str, BytesLike, None] = None) -> "SecretKey":
+        """Read a key file written by the CLI or ``to_text``/``to_protected_text``: armored or
+        binary, plain or passphrase-protected (then ``passphrase`` is required)."""
+        with open(path, "rb") as f:
+            data = f.read()
+        if _vpqc.is_protected_secret_key(data):
+            if passphrase is None:
+                raise InvalidInputError(f"{os.fspath(path)} is protected: a passphrase is required")
+            return cls.from_protected(data, passphrase)
+        if data.lstrip().startswith(b"-----BEGIN"):
+            return cls.from_text(data.decode())
+        return cls.from_bytes(data)
+
+
+def _passphrase(p: Union[str, BytesLike]) -> bytes:
+    return p.encode() if isinstance(p, str) else _b(p)
+
+
+def is_protected_secret_key(data: Union[str, BytesLike]) -> bool:
+    """Is ``data`` a protected secret key (armored text or binary)?"""
+    return _vpqc.is_protected_secret_key(data.encode() if isinstance(data, str) else _b(data))
 
 
 @dataclass(frozen=True)

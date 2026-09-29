@@ -27,6 +27,10 @@ begin
                      a[2], a[3], aad: a[1])
   when "decrypt-file" # decrypt-file SECFILE AAD IN OUT
     Vpqc.decrypt_file(Vpqc::SecretKey.from_text(File.read(a[0])), a[2], a[3], aad: a[1])
+  when "protect" # protect SECFILE PASSPHRASE OUT
+    File.write(a[2], Vpqc::SecretKey.from_text(File.read(a[0])).to_protected_text(a[1], memory_kib: 8192))
+  when "unprotect" # unprotect PROTFILE PASSPHRASE OUT
+    File.write(a[2], Vpqc::SecretKey.from_protected(File.read(a[0]), a[1]).to_text)
   else
     raise ArgumentError, "unknown command #{cmd}"
   end

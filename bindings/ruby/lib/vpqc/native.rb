@@ -28,6 +28,9 @@ module Vpqc
                     %i[buffer_in size_t buffer_in size_t buffer_in size_t buffer_in size_t], :int
     attach_function :vpqc_key_to_text, %i[int buffer_in size_t pointer], :int
     attach_function :vpqc_key_from_text, %i[int buffer_in size_t pointer], :int
+    attach_function :vpqc_secret_key_protect, %i[buffer_in size_t buffer_in size_t uint32 pointer], :int
+    attach_function :vpqc_secret_key_unprotect, %i[buffer_in size_t buffer_in size_t pointer], :int
+    attach_function :vpqc_secret_key_is_protected, %i[buffer_in size_t], :int
     attach_function :vpqc_encrypt_file, %i[buffer_in size_t buffer_in size_t string string pointer], :int
     attach_function :vpqc_decrypt_file, %i[buffer_in size_t buffer_in size_t string string pointer], :int
     attach_function :vpqc_encrypt_file_multi,
@@ -126,6 +129,28 @@ module Vpqc
       out = Buf.new
       check(vpqc_key_from_text(kind, text, text.bytesize, out))
       take(out)
+    end
+
+    # Protected secret key text (ABI 1.1, ADR-0013).
+    def protect_secret_key(key, passphrase, memory_kib)
+      passphrase = bin(passphrase)
+      out = Buf.new
+      check(vpqc_secret_key_protect(key, key.bytesize, passphrase, passphrase.bytesize, memory_kib, out))
+      take(out).force_encoding(Encoding::UTF_8)
+    end
+
+    # Binary secret key from a passphrase-protected one (ABI 1.1).
+    def unprotect_secret_key(data, passphrase)
+      data = bin(data)
+      passphrase = bin(passphrase)
+      out = Buf.new
+      check(vpqc_secret_key_unprotect(data, data.bytesize, passphrase, passphrase.bytesize, out))
+      take(out)
+    end
+
+    def protected_secret_key?(data)
+      data = bin(data)
+      vpqc_secret_key_is_protected(data, data.bytesize) == 1
     end
   end
 end

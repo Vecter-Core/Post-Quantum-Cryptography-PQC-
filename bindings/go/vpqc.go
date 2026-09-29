@@ -152,6 +152,37 @@ func SecretKeyFromText(text string) (SecretKey, error) {
 	return SecretKey{b}, err
 }
 
+// ProtectedText encrypts the secret key under passphrase (Argon2id, XChaCha20-Poly1305;
+// ADR-0013) and returns the armored "VPQC PROTECTED SECRET KEY" text, readable by every vpqc
+// binding and the vpqc CLI. memoryKiB is the Argon2id memory: 0 for the default (64 MiB), else
+// 8192 to 1048576.
+func (k SecretKey) ProtectedText(passphrase []byte, memoryKiB uint32) (string, error) {
+	var out C.vpqc_buf
+	rc := C.vpqc_secret_key_protect(ptr(k.b), C.size_t(len(k.b)), ptr(passphrase),
+		C.size_t(len(passphrase)), C.uint32_t(memoryKiB), &out)
+	if err := check(rc); err != nil {
+		return "", err
+	}
+	return string(take(&out)), nil
+}
+
+// SecretKeyFromProtected decrypts a passphrase-protected key (armored text or binary).
+// A wrong passphrase or a modified key gives an error matching ErrDecryption.
+func SecretKeyFromProtected(data, passphrase []byte) (SecretKey, error) {
+	var out C.vpqc_buf
+	rc := C.vpqc_secret_key_unprotect(ptr(data), C.size_t(len(data)), ptr(passphrase),
+		C.size_t(len(passphrase)), &out)
+	if err := check(rc); err != nil {
+		return SecretKey{}, err
+	}
+	return SecretKey{take(&out)}, nil
+}
+
+// IsProtectedSecretKey reports whether data is a protected secret key (armored or binary).
+func IsProtectedSecretKey(data []byte) bool {
+	return C.vpqc_secret_key_is_protected(ptr(data), C.size_t(len(data))) == 1
+}
+
 // ptr returns a pointer to the first byte, or nil for an empty slice (allowed by the ABI).
 func ptr(b []byte) *C.uint8_t {
 	if len(b) == 0 {

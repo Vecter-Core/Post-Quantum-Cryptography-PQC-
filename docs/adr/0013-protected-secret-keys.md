@@ -83,9 +83,16 @@ At most Grover applies, which leaves about 128-bit security.
   systems only.
 - The format fuzz target covers the new object (strict parse, re-encoding) and asserts that
   no fuzzed file opens under a fixed KEK.
+- Every language binding reads and writes passphrase-protected keys through C ABI 1.1
+  (`vpqc_secret_key_protect`, `vpqc_secret_key_unprotect`, `vpqc_secret_key_is_protected`)
+  or the Rust crate: Python, JS (wasm), Go, Java, PHP, Ruby.
+  - `interop/run.sh` checks every writer against every reader across the 7 implementations,
+    and also that a wrong passphrase is rejected everywhere.
+  - Java takes `char[]` passphrases and wipes its temporary UTF-8 copies, following the JCA
+    convention.
 - Not in this step:
-  - language bindings, which still load plain keys (the Rust API and the CLI support
-    protected keys);
+  - KMS-protected keys in the bindings (they need the service's SDK or CLI; the Rust API and
+    the vpqc CLI support them);
   - PKCS#11 HSMs;
   - Azure Key Vault: its keys are RSA, so wrapping with them would put a quantum-vulnerable
     step back in. Managed HSM with `A256GCM` could be added later.
