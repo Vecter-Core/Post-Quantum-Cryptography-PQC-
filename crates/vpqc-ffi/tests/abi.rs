@@ -285,7 +285,7 @@ fn free_is_idempotent_and_null_safe() {
 
 #[test]
 fn error_messages_are_valid_c_strings() {
-    for code in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 99, 12345] {
+    for code in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 99, 12345] {
         let s = unsafe { CStr::from_ptr(vpqc_error_message(code)) };
         assert!(!s.to_str().unwrap().is_empty());
     }
@@ -384,4 +384,83 @@ fn raw_kem_round_trip_and_errors() {
         unsafe { vpqc_kem_encapsulate(spk.as_ptr(), spk.len(), std::ptr::null_mut(), &mut ct) },
         VPQC_ERR_INVALID_ARGUMENT
     );
+}
+
+#[test]
+fn file_stream_round_trip_and_errors() {
+    use std::ffi::CString;
+    let dir = std::env::temp_dir().join(format!("vpqc-ffi-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let c = |name: &str| CString::new(dir.join(name).to_str().unwrap()).unwrap();
+    let data: Vec<u8> = (0..300_000u32).map(|i| i as u8).collect();
+    std::fs::write(dir.join("in.bin"), &data).unwrap();
+    let (pk, sk) = keygen(vpqc_encryption_keygen, 1);
+    let aad = b"ctx";
+    let mut n = 0u64;
+    let rc = unsafe {
+        vpqc_encrypt_file(
+            pk.as_ptr(),
+            pk.len(),
+            aad.as_ptr(),
+            3,
+            c("in.bin").as_ptr(),
+            c("ct.vpqc").as_ptr(),
+            &mut n,
+        )
+    };
+    assert_eq!((rc, n), (VPQC_OK, data.len() as u64));
+    let rc = unsafe {
+        vpqc_decrypt_file(
+            sk.as_ptr(),
+            sk.len(),
+            aad.as_ptr(),
+            3,
+            c("ct.vpqc").as_ptr(),
+            c("out.bin").as_ptr(),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(rc, VPQC_OK);
+    assert_eq!(std::fs::read(dir.join("out.bin")).unwrap(), data);
+
+    // Wrong aad: decryption failure, no output file.
+    let rc = unsafe {
+        vpqc_decrypt_file(
+            sk.as_ptr(),
+            sk.len(),
+            b"x".as_ptr(),
+            1,
+            c("ct.vpqc").as_ptr(),
+            c("bad.bin").as_ptr(),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(rc, VPQC_ERR_DECRYPTION_FAILED);
+    assert!(!dir.join("bad.bin").exists());
+    // Missing input: I/O error. Null path: invalid argument.
+    let rc = unsafe {
+        vpqc_encrypt_file(
+            pk.as_ptr(),
+            pk.len(),
+            std::ptr::null(),
+            0,
+            c("missing").as_ptr(),
+            c("o").as_ptr(),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(rc, VPQC_ERR_IO);
+    let rc = unsafe {
+        vpqc_encrypt_file(
+            pk.as_ptr(),
+            pk.len(),
+            std::ptr::null(),
+            0,
+            std::ptr::null(),
+            c("o").as_ptr(),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(rc, VPQC_ERR_INVALID_ARGUMENT);
+    std::fs::remove_dir_all(&dir).unwrap();
 }

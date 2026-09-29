@@ -32,6 +32,8 @@ int vpqc_sign(const char *sk, size_t sk_len, const char *msg, size_t msg_len, co
 int vpqc_verify(const char *pk, size_t pk_len, const char *msg, size_t msg_len, const char *ctx, size_t ctx_len, const char *sig, size_t sig_len);
 int vpqc_key_to_text(int kind, const char *key, size_t key_len, vpqc_buf *out);
 int vpqc_key_from_text(int kind, const char *text, size_t text_len, vpqc_buf *out);
+int vpqc_encrypt_file(const char *pk, size_t pk_len, const char *aad, size_t aad_len, const char *in, const char *out, uint64_t *n);
+int vpqc_decrypt_file(const char *sk, size_t sk_len, const char *aad, size_t aad_len, const char *in, const char *out, uint64_t *n);
 C;
 
     private static ?FFI $ffi = null;
@@ -95,6 +97,15 @@ C;
     public static function verify(string $pk, string $msg, string $ctx, string $sig): void
     {
         self::check(self::ffi()->vpqc_verify($pk, strlen($pk), $msg, strlen($msg), $ctx, strlen($ctx), $sig, strlen($sig)));
+    }
+
+    /** vpqc_encrypt_file / vpqc_decrypt_file; returns plaintext bytes. */
+    public static function file(string $fn, string $key, string $aad, string $in, string $out): int
+    {
+        $ffi = self::ffi();
+        $n = $ffi->new('uint64_t');
+        self::check($ffi->$fn($key, strlen($key), $aad, strlen($aad), $in, $out, FFI::addr($n)));
+        return $n->cdata;
     }
 
     public static function keyToText(int $kind, string $key): string

@@ -98,7 +98,32 @@ vpqc open --key alice.vpqc-secret --aad v1 msg.vpqc
 vpqc inspect msg.vpqc            # cho biết thuật toán, kích thước, cảnh báo nếu chỉ cổ điển
 ```
 
-## 3. Lỗi và bảo mật khi dùng
+## 3. Tệp lớn (streaming)
+
+`seal`/`open` dành cho thông điệp vừa bộ nhớ. Với tệp (sao lưu, ảnh đĩa, log), dùng dạng
+**stream**: bộ nhớ không đổi dù tệp lớn cỡ nào (1 GiB chạy với ~10 MiB RAM).
+
+```sh
+vpqc encrypt --to alice.pub --aad backup/2026-09 -o db.dump.vpqc db.dump
+vpqc decrypt --key alice.vpqc-secret --aad backup/2026-09 -o db.dump db.dump.vpqc
+pg_dump mydb | vpqc encrypt --to alice.pub > db.vpqc          # stdin/stdout cũng được
+```
+
+```python
+vpqc.encrypt_file(keys.public, "db.dump", "db.dump.vpqc", aad=b"backup/2026-09")
+vpqc.decrypt_file(keys.secret, "db.dump.vpqc", "db.dump", aad=b"backup/2026-09")
+enc = vpqc.StreamEncryptor(keys.public, aad=b"upload")    # dữ liệu đến từng phần
+```
+
+Go `EncryptFile/DecryptFile`, Java `Vpqc.encryptFile/decryptFile`, PHP `Vpqc::encryptFile`,
+Ruby `Vpqc.encrypt_file`, C `vpqc_encrypt_file`, JS/trình duyệt `new StreamEncryptor(...)` /
+`new StreamDecryptor(...)` (dùng với `file.stream()`).
+
+**Quy tắc quan trọng:** khi giải mã ra **tệp**, tệp đích chỉ xuất hiện nếu toàn bộ luồng hợp
+lệ. Khi giải mã theo kiểu luồng (stdout, `StreamDecryptor`, `Decryptor`), các phần bản rõ được
+trả dần; nếu cuối cùng báo lỗi (ví dụ tệp bị cắt cụt) thì **phải bỏ toàn bộ dữ liệu đã nhận**.
+
+## 3b. Lỗi và bảo mật khi dùng
 
 - Giải mã/xác minh thất bại luôn báo lỗi gộp (`DecryptionFailed` / `VerificationFailed`): sai khoá,
   sai `aad`/`context` hay dữ liệu bị sửa đều cho cùng một kết quả, để không tạo "oracle".

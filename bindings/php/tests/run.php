@@ -93,5 +93,19 @@ $big = random_bytes(1 << 20);
 $k = Vpqc::generateEncryptionKeypair();
 check(Vpqc::open($k->secret, Vpqc::seal($k->public, $big)) === $big, 'large message');
 
+$dir = sys_get_temp_dir() . '/vpqc-php-' . getmypid();
+@mkdir($dir);
+$k = Vpqc::generateEncryptionKeypair();
+$data = random_bytes(3_000_000);
+file_put_contents("$dir/in", $data);
+check(Vpqc::encryptFile($k->public, "$dir/in", "$dir/enc", 'ctx') === strlen($data), 'encryptFile');
+check(Vpqc::decryptFile($k->secret, "$dir/enc", "$dir/out", 'ctx') === strlen($data), 'decryptFile');
+check(file_get_contents("$dir/out") === $data, 'file round trip');
+throws(DecryptionException::class, fn () => Vpqc::decryptFile($k->secret, "$dir/enc", "$dir/bad", 'other'), 'file wrong aad');
+check(!file_exists("$dir/bad"), 'no output after failed decryption');
+throws(VpqcException::class, fn () => Vpqc::encryptFile($k->public, "$dir/missing", "$dir/x"), 'missing input');
+array_map('unlink', glob("$dir/*"));
+rmdir($dir);
+
 echo "php: $count checks, $failures failures\n";
 exit($failures === 0 ? 0 : 1);

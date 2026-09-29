@@ -223,6 +223,37 @@ final class Native {
         }
     }
 
+    private static final FunctionDescriptor DESC_FILE = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+
+    /** vpqc_encrypt_file / vpqc_decrypt_file. Returns the number of plaintext bytes. */
+    static long file(String fn, byte[] key, byte[] aad, String input, String output) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment n = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment k = copyIn(arena, key);
+            try {
+                check(invoke(handle(fn, DESC_FILE),
+                        k, (long) key.length,
+                        copyIn(arena, aad), (long) aad.length,
+                        cString(arena, input), cString(arena, output), n));
+            } finally {
+                k.fill((byte) 0);
+            }
+            return n.get(ValueLayout.JAVA_LONG, 0);
+        }
+    }
+
+    private static MemorySegment cString(Arena arena, String s) {
+        byte[] b = s.getBytes(StandardCharsets.UTF_8);
+        MemorySegment seg = arena.allocate(b.length + 1L);
+        MemorySegment.copy(MemorySegment.ofArray(b), 0, seg, 0, b.length);
+        seg.set(ValueLayout.JAVA_BYTE, b.length, (byte) 0);
+        return seg;
+    }
+
     static String keyToText(int kind, byte[] key) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment out = arena.allocate(BUF);

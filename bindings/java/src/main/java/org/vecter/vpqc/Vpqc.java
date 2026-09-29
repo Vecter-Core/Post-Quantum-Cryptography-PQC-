@@ -113,6 +113,36 @@ public final class Vpqc {
         return Native.kemDecapsulate(secret.raw(), ciphertext);
     }
 
+    /**
+     * Encrypts a file of any size in constant memory (streaming format). The output file is
+     * replaced atomically.
+     *
+     * @param recipient recipient public key
+     * @param input file to encrypt
+     * @param output encrypted file
+     * @param aad authenticated context (may be empty)
+     * @return number of plaintext bytes
+     * @throws VpqcException.IoException for file errors
+     */
+    public static long encryptFile(PublicKey recipient, java.nio.file.Path input, java.nio.file.Path output, byte[] aad) {
+        return Native.file("vpqc_encrypt_file", recipient.raw(), aad, input.toString(), output.toString());
+    }
+
+    /**
+     * Decrypts a file produced by {@link #encryptFile}. The output file appears only if the whole
+     * stream verifies; otherwise no output is left behind.
+     *
+     * @param secret recipient secret key
+     * @param input encrypted file
+     * @param output decrypted file
+     * @param aad the context used when encrypting
+     * @return number of plaintext bytes
+     * @throws VpqcException.DecryptionException for a wrong key, wrong context or tampering
+     */
+    public static long decryptFile(SecretKey secret, java.nio.file.Path input, java.nio.file.Path output, byte[] aad) {
+        return Native.file("vpqc_decrypt_file", secret.raw(), aad, input.toString(), output.toString());
+    }
+
     /** @return the native ABI version ({@code major << 16 | minor}) */
     public static int abiVersion() {
         return Native.abiVersion();

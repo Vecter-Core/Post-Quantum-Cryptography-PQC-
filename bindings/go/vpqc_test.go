@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -178,5 +180,33 @@ func TestKeyText(t *testing.T) {
 	}
 	if _, err := PublicKeyFromText(st); !errors.Is(err, ErrInvalidInput) {
 		t.Fatalf("secret text accepted as public key: %v", err)
+	}
+}
+
+func TestFileStreaming(t *testing.T) {
+	dir := t.TempDir()
+	pk, sk, _ := GenerateEncryptionKeypair(ProfileHigh)
+	data := bytes.Repeat([]byte("0123456789abcdef"), 300_000) // ~4.6 MiB
+	in, enc, out := filepath.Join(dir, "in"), filepath.Join(dir, "enc"), filepath.Join(dir, "out")
+	if err := os.WriteFile(in, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := EncryptFile(pk, in, enc, []byte("ctx")); err != nil || n != uint64(len(data)) {
+		t.Fatalf("encrypt: %d %v", n, err)
+	}
+	if n, err := DecryptFile(sk, enc, out, []byte("ctx")); err != nil || n != uint64(len(data)) {
+		t.Fatalf("decrypt: %d %v", n, err)
+	}
+	if got, _ := os.ReadFile(out); !bytes.Equal(got, data) {
+		t.Fatal("round trip mismatch")
+	}
+	if _, err := DecryptFile(sk, enc, filepath.Join(dir, "bad"), []byte("other")); !errors.Is(err, ErrDecryption) {
+		t.Fatalf("wrong aad: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "bad")); !os.IsNotExist(err) {
+		t.Fatal("output left behind after failed decryption")
+	}
+	if _, err := EncryptFile(pk, filepath.Join(dir, "missing"), enc, nil); !errors.Is(err, ErrIO) {
+		t.Fatalf("missing input: %v", err)
 	}
 }

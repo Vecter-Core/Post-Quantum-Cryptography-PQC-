@@ -32,6 +32,7 @@ extern "C" {
 #define VPQC_ERR_DECRYPTION_FAILED 8
 #define VPQC_ERR_VERIFICATION_FAILED 9
 #define VPQC_ERR_CONTEXT_TOO_LONG 10
+#define VPQC_ERR_IO 11
 #define VPQC_ERR_INTERNAL 99
 
 #define VPQC_KEY_PUBLIC 1
@@ -92,6 +93,18 @@ int vpqc_kem_encapsulate(const uint8_t *public_key, size_t public_key_len,
 int vpqc_kem_decapsulate(const uint8_t *secret_key, size_t secret_key_len,
                          const uint8_t *ciphertext, size_t ciphertext_len,
                          uint8_t shared_secret_out[32]);
+
+/* Streaming file encryption (any size, constant memory; ADR-0007). Paths are NUL-terminated
+ * (UTF-8 on Windows). Output is replaced atomically; vpqc_decrypt_file leaves no output file
+ * unless the whole stream verifies. plaintext_len_out may be NULL. */
+int vpqc_encrypt_file(const uint8_t *public_key, size_t public_key_len,
+                      const uint8_t *aad, size_t aad_len,
+                      const char *input_path, const char *output_path,
+                      uint64_t *plaintext_len_out);
+int vpqc_decrypt_file(const uint8_t *secret_key, size_t secret_key_len,
+                      const uint8_t *aad, size_t aad_len,
+                      const char *input_path, const char *output_path,
+                      uint64_t *plaintext_len_out);
 
 #ifdef __cplusplus
 }

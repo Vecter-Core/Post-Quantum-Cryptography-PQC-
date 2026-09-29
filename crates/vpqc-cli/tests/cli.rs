@@ -204,3 +204,158 @@ fn scan_reports_and_gates() {
     let v: serde_json::Value = serde_json::from_slice(&cbom.stdout).unwrap();
     assert_eq!(v["specVersion"], "1.6");
 }
+
+#[test]
+fn encrypt_decrypt_streaming_files_and_pipes() {
+    use std::io::Write;
+    use std::process::Stdio;
+
+    let dir = tempfile::tempdir().unwrap();
+    ok(&[
+        "keygen",
+        "--purpose",
+        "encrypt",
+        "--out",
+        p(&dir.path().join("k")),
+    ]);
+    let pubkey = dir.path().join("k.pub");
+    let seckey = dir.path().join("k.vpqc-secret");
+    let big: Vec<u8> = (0..1_500_000u32).map(|i| (i % 253) as u8).collect();
+    let plain = dir.path().join("big.bin");
+    std::fs::write(&plain, &big).unwrap();
+
+    // File -> file.
+    let enc = dir.path().join("big.bin.vpqc");
+    ok(&[
+        "encrypt",
+        "--to",
+        p(&pubkey),
+        "--aad",
+        "backup",
+        "-o",
+        p(&enc),
+        p(&plain),
+    ]);
+    let info = ok(&["inspect", p(&enc)]);
+    assert!(
+        String::from_utf8_lossy(&info.stdout).contains("stream"),
+        "{:?}",
+        info
+    );
+    let out = dir.path().join("restored.bin");
+    ok(&[
+        "decrypt",
+        "--key",
+        p(&seckey),
+        "--aad",
+        "backup",
+        "-o",
+        p(&out),
+        p(&enc),
+    ]);
+    assert_eq!(std::fs::read(&out).unwrap(), big);
+
+    // Refuses to overwrite without --force.
+    assert!(
+        !vpqc(&[
+            "decrypt",
+            "--key",
+            p(&seckey),
+            "--aad",
+            "backup",
+            "-o",
+            p(&out),
+            p(&enc)
+        ])
+        .status
+        .success()
+    );
+    ok(&[
+        "decrypt",
+        "--key",
+        p(&seckey),
+        "--aad",
+        "backup",
+        "-o",
+        p(&out),
+        "--force",
+        p(&enc),
+    ]);
+
+    // Truncated input: non-zero exit and no output file.
+    let cut = dir.path().join("cut.vpqc");
+    let ct = std::fs::read(&enc).unwrap();
+    std::fs::write(&cut, &ct[..ct.len() / 2]).unwrap();
+    let never = dir.path().join("never.bin");
+    let r = vpqc(&[
+        "decrypt",
+        "--key",
+        p(&seckey),
+        "--aad",
+        "backup",
+        "-o",
+        p(&never),
+        p(&cut),
+    ]);
+    assert!(!r.status.success());
+    assert!(!never.exists());
+
+    // stdin -> file with truncated input: failure, and neither output nor temp file remains.
+    let never2 = dir.path().join("never2.bin");
+    let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_vpqc"))
+        .args([
+            "decrypt",
+            "--key",
+            p(&seckey),
+            "--aad",
+            "backup",
+            "-o",
+            p(&never2),
+        ])
+        .stdin(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(&std::fs::read(&cut).unwrap())
+        .unwrap();
+    assert!(!child.wait_with_output().unwrap().status.success());
+    assert!(!never2.exists());
+    assert!(std::fs::read_dir(dir.path()).unwrap().all(|e| {
+        !e.unwrap()
+            .file_name()
+            .to_string_lossy()
+            .ends_with(".vpqc-tmp")
+    }));
+
+    // stdin -> stdout in both directions.
+    let bin = env!("CARGO_BIN_EXE_vpqc");
+    let mut child = std::process::Command::new(bin)
+        .args(["encrypt", "--to", p(&pubkey)])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let data = big.clone();
+    let mut stdin = child.stdin.take().unwrap();
+    let writer = std::thread::spawn(move || stdin.write_all(&data).unwrap());
+    let enc_out = child.wait_with_output().unwrap();
+    writer.join().unwrap();
+    assert!(enc_out.status.success());
+    let mut child = std::process::Command::new(bin)
+        .args(["decrypt", "--key", p(&seckey)])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let ct = enc_out.stdout.clone();
+    let writer = std::thread::spawn(move || stdin.write_all(&ct).unwrap());
+    let dec_out = child.wait_with_output().unwrap();
+    writer.join().unwrap();
+    assert!(dec_out.status.success());
+    assert_eq!(dec_out.stdout, big);
+}

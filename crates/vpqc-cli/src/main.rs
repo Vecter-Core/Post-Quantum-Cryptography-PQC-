@@ -85,7 +85,42 @@ enum Command {
         #[arg(long)]
         force: bool,
     },
-    /// Encrypt a file to a public key. Use `-` for stdin/stdout.
+    /// Encrypt a file or stream of any size (constant memory). Recommended for files.
+    Encrypt {
+        /// Recipient public key file.
+        #[arg(long)]
+        to: PathBuf,
+        /// Authenticated context; must be given again to decrypt.
+        #[arg(long, default_value = "")]
+        aad: String,
+        /// Output file (default: stdout).
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Overwrite an existing output file.
+        #[arg(long)]
+        force: bool,
+        /// Input file (default: stdin).
+        input: Option<PathBuf>,
+    },
+    /// Decrypt a stream produced by `encrypt`. With `-o FILE`, the file appears only if the
+    /// whole stream verifies; to stdout, output must be discarded if the exit code is non-zero.
+    Decrypt {
+        /// Secret key file.
+        #[arg(long)]
+        key: PathBuf,
+        /// Authenticated context used when encrypting.
+        #[arg(long, default_value = "")]
+        aad: String,
+        /// Output file (default: stdout).
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Overwrite an existing output file.
+        #[arg(long)]
+        force: bool,
+        /// Input file (default: stdin).
+        input: Option<PathBuf>,
+    },
+    /// Encrypt a message that fits in memory (sealed box). Use `-` for stdin/stdout.
     Seal {
         /// Recipient public key file.
         #[arg(long)]
@@ -294,6 +329,42 @@ fn run(cli: Cli) -> CliResult {
             );
             Ok(())
         }
+        Command::Encrypt {
+            to,
+            aad,
+            output,
+            force,
+            input,
+        } => {
+            let pk =
+                keys::public_from_bytes(&read_key_bytes(&to, "VPQC PUBLIC KEY")?).map_err(err)?;
+            run_stream(
+                true,
+                &input,
+                &output,
+                force,
+                |r, w| vpqc::stream::seal_stream(&pk, aad.as_bytes(), r, w),
+                |r, o| vpqc::stream::encrypt_to_file(&pk, aad.as_bytes(), r, o),
+            )
+        }
+        Command::Decrypt {
+            key,
+            aad,
+            output,
+            force,
+            input,
+        } => {
+            let sk =
+                keys::secret_from_bytes(&read_key_bytes(&key, "VPQC SECRET KEY")?).map_err(err)?;
+            run_stream(
+                false,
+                &input,
+                &output,
+                force,
+                |r, w| vpqc::stream::open_stream(&sk, aad.as_bytes(), r, w),
+                |r, o| vpqc::stream::decrypt_to_file(&sk, aad.as_bytes(), r, o),
+            )
+        }
         Command::Seal {
             to,
             aad,
@@ -389,7 +460,84 @@ fn run(cli: Cli) -> CliResult {
     }
 }
 
+fn is_stdio(p: &Option<PathBuf>) -> bool {
+    p.as_deref().is_none_or(|p| p == Path::new("-"))
+}
+
+fn open_reader(input: &Option<PathBuf>) -> Result<Box<dyn Read>, String> {
+    Ok(match input.as_deref().filter(|_| !is_stdio(input)) {
+        Some(p) => Box::new(std::io::BufReader::with_capacity(
+            1 << 16,
+            fs::File::open(p).map_err(|e| format!("{}: {e}", p.display()))?,
+        )),
+        None => Box::new(std::io::stdin().lock()),
+    })
+}
+
+fn stream_error(e: &std::io::Error) -> String {
+    match vpqc::stream::crypto_error(e) {
+        Some(c) => c.to_string(),
+        None => e.to_string(),
+    }
+}
+
+/// Run a streaming operation. File-to-file uses the atomic file API; anything involving
+/// stdin/stdout streams through buffers. For decryption to stdout, a failure is reported on
+/// stderr with a non-zero exit code after partial output may already have been written.
+fn run_stream(
+    encrypting: bool,
+    input: &Option<PathBuf>,
+    output: &Option<PathBuf>,
+    force: bool,
+    streaming: impl FnOnce(&mut dyn Read, &mut dyn Write) -> std::io::Result<u64>,
+    to_file: impl FnOnce(&mut dyn Read, &Path) -> std::io::Result<u64>,
+) -> CliResult {
+    if let Some(out) = output.as_deref().filter(|_| !is_stdio(output)) {
+        if out.exists() && !force {
+            return Err(format!(
+                "{}: already exists (use --force to overwrite)",
+                out.display()
+            ));
+        }
+        // Any input -> file: written through a temporary file, renamed only on success.
+        let mut reader = open_reader(input)?;
+        to_file(&mut reader, out).map_err(|e| stream_error(&e))?;
+        return Ok(());
+    }
+    let mut reader = open_reader(input)?;
+    let mut stdout = std::io::BufWriter::with_capacity(1 << 16, std::io::stdout().lock());
+    match streaming(&mut reader, &mut stdout) {
+        Ok(_) => Ok(()),
+        Err(e) if !encrypting => Err(format!(
+            "{} (discard any output already written)",
+            stream_error(&e)
+        )),
+        Err(e) => Err(stream_error(&e)),
+    }
+}
+
 fn inspect(path: &Path) -> CliResult {
+    // Streams can be huge: identify them from their header without reading the whole file.
+    let size = fs::metadata(path)
+        .map_err(|e| format!("{}: {e}", path.display()))?
+        .len();
+    let mut prefix = Vec::new();
+    fs::File::open(path)
+        .and_then(|f| f.take(1 << 16).read_to_end(&mut prefix))
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    if let Ok(h) = vpqc_format::StreamHeader::decode_prefix(&prefix) {
+        let header_len = 12 + h.kem_ciphertext.len() as u64;
+        let cs = h.chunk_size() as u64;
+        let body = size.saturating_sub(header_len);
+        let chunks = body.div_ceil(cs + 16).max(1);
+        println!(
+            "stream     : KEM {}, AEAD ChaCha20-Poly1305, {} KiB chunks\nsize       : {size} bytes, about {} bytes of plaintext in {chunks} chunk(s)",
+            describe_alg(AlgorithmId::Kem(h.kem)),
+            cs / 1024,
+            body.saturating_sub(16 * chunks),
+        );
+        return Ok(());
+    }
     let raw = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let bytes = match std::str::from_utf8(&raw) {
         Ok(t) if t.trim_start().starts_with("-----BEGIN VPQC") => {

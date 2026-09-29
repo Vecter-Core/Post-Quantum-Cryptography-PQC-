@@ -87,6 +87,22 @@ func main() {
 		if err := vpqc.Verify(pk, read(a[4]), []byte(a[2]), read(a[3])); err != nil {
 			die(err)
 		}
+	case "encrypt-file": // encrypt-file PUBFILE AAD IN OUT
+		pk, err := vpqc.PublicKeyFromText(string(read(a[1])))
+		if err != nil {
+			die(err)
+		}
+		if _, err := vpqc.EncryptFile(pk, a[3], a[4], []byte(a[2])); err != nil {
+			die(err)
+		}
+	case "decrypt-file": // decrypt-file SECFILE AAD IN OUT
+		sk, err := vpqc.SecretKeyFromText(string(read(a[1])))
+		if err != nil {
+			die(err)
+		}
+		if _, err := vpqc.DecryptFile(sk, a[3], a[4], []byte(a[2])); err != nil {
+			die(err)
+		}
 	default:
 		die(fmt.Errorf("unknown command %q", a[0]))
 	}

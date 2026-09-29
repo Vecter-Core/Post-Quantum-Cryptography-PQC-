@@ -81,4 +81,19 @@ class VpqcTest < Minitest::Test
     data = SecureRandom.random_bytes(1 << 20)
     assert_equal data, Vpqc.unseal(k.secret, Vpqc.seal(k.public, data))
   end
+
+  def test_file_streaming
+    require "tmpdir"
+    Dir.mktmpdir do |dir|
+      k = Vpqc.generate_encryption_keypair
+      data = SecureRandom.random_bytes(3_000_000)
+      File.binwrite("#{dir}/in", data)
+      assert_equal data.bytesize, Vpqc.encrypt_file(k.public, "#{dir}/in", "#{dir}/enc", aad: "ctx")
+      assert_equal data.bytesize, Vpqc.decrypt_file(k.secret, "#{dir}/enc", "#{dir}/out", aad: "ctx")
+      assert_equal data, File.binread("#{dir}/out")
+      assert_raises(Vpqc::DecryptionError) { Vpqc.decrypt_file(k.secret, "#{dir}/enc", "#{dir}/bad", aad: "x") }
+      refute File.exist?("#{dir}/bad")
+      assert_raises(Vpqc::IOError) { Vpqc.encrypt_file(k.public, "#{dir}/missing", "#{dir}/o") }
+    end
+  end
 end

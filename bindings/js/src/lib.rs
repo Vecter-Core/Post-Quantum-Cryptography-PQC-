@@ -136,6 +136,90 @@ pub fn secret_key_from_text(text: &str) -> Result<Vec<u8>, JsValue> {
     ))
 }
 
+fn fail_io(e: std::io::Error) -> JsValue {
+    match vpqc::stream::crypto_error(&e) {
+        Some(c) => fail(c.clone()),
+        None => fail(Error::Backend("I/O error")),
+    }
+}
+
+fn finished() -> JsValue {
+    fail(Error::Format("stream already finished"))
+}
+
+/// Incremental stream encryption (ADR-0007) for data of any size, e.g. a browser `File`
+/// read through `file.stream()`. Concatenate every returned piece in order.
+#[wasm_bindgen]
+pub struct StreamEncryptor {
+    inner: Option<vpqc::stream::Encryptor<Vec<u8>>>,
+}
+
+#[wasm_bindgen]
+impl StreamEncryptor {
+    /// Start a stream to `publicKey`; `aad` is authenticated context.
+    #[wasm_bindgen(constructor)]
+    pub fn new(public_key: &[u8], aad: &[u8]) -> Result<StreamEncryptor, JsValue> {
+        let pk = keys::public_from_bytes(public_key).map_err(fail)?;
+        let enc = vpqc::stream::Encryptor::new(&pk, aad, Vec::new()).map_err(fail_io)?;
+        Ok(StreamEncryptor { inner: Some(enc) })
+    }
+
+    /// Add plaintext; returns the ciphertext produced so far (the first call includes the header).
+    pub fn push(&mut self, data: &[u8]) -> Result<Vec<u8>, JsValue> {
+        use std::io::Write;
+        let enc = self.inner.as_mut().ok_or_else(finished)?;
+        enc.write_all(data).map_err(fail_io)?;
+        Ok(std::mem::take(enc.get_mut()))
+    }
+
+    /// Write the final chunk; returns the remaining ciphertext.
+    pub fn finish(&mut self) -> Result<Vec<u8>, JsValue> {
+        self.inner
+            .take()
+            .ok_or_else(finished)?
+            .finish()
+            .map_err(fail_io)
+    }
+}
+
+/// Incremental stream decryption. Plaintext returned by `push` must be discarded if a later
+/// `push` or `finish` throws; only a successful `finish` proves the stream is complete.
+#[wasm_bindgen]
+pub struct StreamDecryptor {
+    inner: Option<vpqc::stream::PushDecryptor>,
+}
+
+#[wasm_bindgen]
+impl StreamDecryptor {
+    /// Prepare to decrypt a stream for `secretKey` with context `aad`.
+    #[wasm_bindgen(constructor)]
+    pub fn new(secret_key: &[u8], aad: &[u8]) -> Result<StreamDecryptor, JsValue> {
+        let sk = keys::secret_from_bytes(secret_key).map_err(fail)?;
+        Ok(StreamDecryptor {
+            inner: Some(vpqc::stream::PushDecryptor::new(&sk, aad)),
+        })
+    }
+
+    /// Add ciphertext; returns plaintext of the chunks that are complete.
+    pub fn push(&mut self, data: &[u8]) -> Result<Vec<u8>, JsValue> {
+        self.inner
+            .as_mut()
+            .ok_or_else(finished)?
+            .update(data)
+            .map_err(fail_io)
+    }
+
+    /// Verify the final chunk and return its plaintext. Throws `DECRYPTION_FAILED` for a
+    /// truncated or modified stream.
+    pub fn finish(&mut self) -> Result<Vec<u8>, JsValue> {
+        self.inner
+            .take()
+            .ok_or_else(finished)?
+            .finish()
+            .map_err(fail_io)
+    }
+}
+
 /// Native library version.
 #[wasm_bindgen]
 pub fn version() -> String {

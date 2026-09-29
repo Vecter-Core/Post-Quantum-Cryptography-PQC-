@@ -18,6 +18,10 @@ begin
     File.binwrite(a[3], Vpqc.sign(Vpqc::SecretKey.from_text(File.read(a[0])), File.binread(a[2]), context: a[1]))
   when "verify" # verify PUBFILE CTX SIG IN
     Vpqc.verify(Vpqc::PublicKey.from_text(File.read(a[0])), File.binread(a[3]), File.binread(a[2]), context: a[1])
+  when "encrypt-file" # encrypt-file PUBFILE AAD IN OUT
+    Vpqc.encrypt_file(Vpqc::PublicKey.from_text(File.read(a[0])), a[2], a[3], aad: a[1])
+  when "decrypt-file" # decrypt-file SECFILE AAD IN OUT
+    Vpqc.decrypt_file(Vpqc::SecretKey.from_text(File.read(a[0])), a[2], a[3], aad: a[1])
   else
     raise ArgumentError, "unknown command #{cmd}"
   end

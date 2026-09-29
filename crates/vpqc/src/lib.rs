@@ -30,6 +30,7 @@ pub use vpqc_hpke as hpke;
 pub mod keys;
 mod registry;
 pub mod signing;
+pub mod stream;
 
 pub use registry::{kem, signature_scheme};
 pub use vpqc_core::{

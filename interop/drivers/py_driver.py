@@ -24,6 +24,10 @@ def main(argv):
     elif cmd == "verify":  # verify PUBFILE CTX SIG IN
         pk = vpqc.PublicKey.from_text(Path(a[0]).read_text())
         vpqc.verify(pk, Path(a[3]).read_bytes(), Path(a[2]).read_bytes(), context=a[1].encode())
+    elif cmd == "encrypt-file":  # encrypt-file PUBFILE AAD IN OUT
+        vpqc.encrypt_file(vpqc.PublicKey.from_text(Path(a[0]).read_text()), a[2], a[3], aad=a[1].encode())
+    elif cmd == "decrypt-file":  # decrypt-file SECFILE AAD IN OUT
+        vpqc.decrypt_file(vpqc.SecretKey.from_text(Path(a[0]).read_text()), a[2], a[3], aad=a[1].encode())
     else:
         raise SystemExit(f"unknown command {cmd}")
 
@@ -31,6 +35,6 @@ def main(argv):
 if __name__ == "__main__":
     try:
         main(sys.argv[1:])
-    except vpqc.VpqcError as e:
+    except (vpqc.VpqcError, OSError) as e:
         print(f"py-driver: {e}", file=sys.stderr)
         sys.exit(1)
