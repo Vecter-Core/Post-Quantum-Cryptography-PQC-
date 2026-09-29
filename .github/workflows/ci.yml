@@ -1,9 +1,22 @@
 name: CI
 
+# Minutes matter (private repository: macOS counts 10x, Windows 2x). Every commit runs once:
+# pull requests cover branches, pushes cover main. Documentation-only changes skip CI, a newer
+# commit cancels the older run, and macOS/Windows run on main, weekly and on demand, not per
+# pull request commit.
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", "LICENSE*"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "LICENSE*"]
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,7 +29,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # On pull requests only Linux; see the note at the top.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
         toolchain: [stable]
         include:
           - os: ubuntu-latest
