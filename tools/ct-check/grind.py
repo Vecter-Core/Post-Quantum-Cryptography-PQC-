@@ -30,13 +30,13 @@ ALLOWED = {
          "P-384 table lookup negates the selected point; LLVM turns crypto-bigint's branch-free "
          "is_zero(y) into a branch. y is never 0 on a prime-order curve, so the branch always "
          "goes the same way"),
-        (r"SecretKey::from_(bytes|slice)|from_bytes <- elliptic_curve::secret_key",
+        (r"SecretKey::from_(bytes|slice)|from_bytes <- (elliptic_curve::secret_key|from_slice)",
          "scalar validity check (0 < d < n); failure probability about 2^-384"),
         (r"to_sec1_bytes", "encoding the P-384 public key share (public output)"),
     ],
     "ecdsa-p384-sign": [
         (r"neg_mod.*LookupTable.*select", "see mlkem1024-p384-decaps"),
-        (r"SecretKey::from_(bytes|slice)|from_bytes <- elliptic_curve::secret_key",
+        (r"SecretKey::from_(bytes|slice)|from_bytes <- (elliptic_curve::secret_key|from_slice)",
          "scalar validity check (0 < d < n)"),
         (r"fill_next_k", "RFC 6979 candidate k range check; retry probability about 2^-384"),
         (r"invert <- sign_prehashed", "k != 0 check on the inverse"),
@@ -79,7 +79,18 @@ def reports(case):
 
 
 def strip_generics(frame):
-    """`a::B<C<D>>::f<E>` -> `a::B::f`, keeping the path."""
+    """`a::B<C<D>>::f<E>` -> `a::B::f`, keeping the path.
+
+    Qualified forms, as printed by some rustc/valgrind versions, keep their type path:
+    `<a::B<C>>::f` -> `a::B::f` and `<a::B as c::T>::f` -> `a::B as c::T::f`.
+    """
+    if frame.startswith("<"):
+        depth = 0
+        for i, ch in enumerate(frame):
+            depth += {"<": 1, ">": -1}.get(ch, 0)
+            if depth == 0:
+                frame = frame[1:i] + frame[i + 1:]
+                break
     while True:
         shorter = re.sub(r"<[^<>]*>", "", frame)
         if shorter == frame:
@@ -101,7 +112,7 @@ def main():
                     seen[pattern] = seen.get(pattern, 0) + 1
                     break
             else:
-                unexpected.append(block)
+                unexpected.append((stack, block))
         total = sum(seen.values()) + len(unexpected)
         if case.startswith("control"):
             ok = total > 0 and not unexpected
@@ -114,7 +125,9 @@ def main():
         for pattern, reason in rules:
             if seen.get(pattern) and not case.startswith("control"):
                 print(f"    {seen[pattern]:>3} x {reason}")
-        for block in unexpected[:3]:
+        for stack, _ in unexpected:
+            print(f"    unexpected: {stack[:300]}")
+        for _, block in unexpected[:2]:
             print("\n".join(block.splitlines()[:14]) + "\n    ...")
         failed |= not ok
     print("\nFAILED" if failed else "\nAll cases as expected.")
