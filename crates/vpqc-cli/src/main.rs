@@ -1,5 +1,7 @@
 //! `vpqc` command-line tool.
 
+mod jose;
+
 use std::fs;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
@@ -202,6 +204,21 @@ enum Command {
         /// Write the report to a file instead of stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+    /// Post-quantum JWKs (`AKP`, ML-DSA) for JOSE.
+    Jwk {
+        #[command(subcommand)]
+        command: jose::JwkCommand,
+    },
+    /// Compact JWS signed with ML-DSA.
+    Jws {
+        #[command(subcommand)]
+        command: jose::JwsCommand,
+    },
+    /// JSON Web Tokens signed with ML-DSA.
+    Jwt {
+        #[command(subcommand)]
+        command: jose::JwtCommand,
     },
     /// Describe a key, sealed file or signature.
     Inspect {
@@ -457,6 +474,9 @@ fn run(cli: Cli) -> CliResult {
             Ok(())
         }
         Command::Inspect { file } => inspect(&file),
+        Command::Jwk { command } => jose::jwk(command),
+        Command::Jws { command } => jose::jws(command),
+        Command::Jwt { command } => jose::jwt(command),
     }
 }
 

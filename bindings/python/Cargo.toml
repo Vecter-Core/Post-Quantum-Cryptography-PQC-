@@ -25,5 +25,23 @@ lto = "thin"
 codegen-units = 1
 overflow-checks = true
 
+# As in the workspace: no overflow checks inside the cryptographic dependencies, where they
+# would add branches on secret data (see tools/ct-check/README.md).
+[profile.release.package."*"]
+overflow-checks = false
+# vpqc's own crates are path dependencies here, not members: keep their checks.
+[profile.release.package.vpqc]
+overflow-checks = true
+[profile.release.package.vpqc-backend-libcrux]
+overflow-checks = true
+[profile.release.package.vpqc-core]
+overflow-checks = true
+[profile.release.package.vpqc-format]
+overflow-checks = true
+[profile.release.package.vpqc-hpke]
+overflow-checks = true
+[profile.release.package.vpqc-hybrid]
+overflow-checks = true
+
 [lints.rust]
 unsafe_code = "forbid"

@@ -10,3 +10,5 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.egg-info/
+interop/jose/node_modules/
+interop/jose/package-lock.json

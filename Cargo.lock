@@ -1872,6 +1872,7 @@ dependencies = [
  "libcrux-ml-kem",
  "ml-dsa",
  "ml-kem",
+ "serde_json",
  "vpqc-core",
  "zeroize",
 ]
@@ -1886,6 +1887,7 @@ dependencies = [
  "vpqc",
  "vpqc-core",
  "vpqc-format",
+ "vpqc-jose",
  "vpqc-scan",
 ]
 
@@ -1896,6 +1898,19 @@ dependencies = [
  "getrandom 0.4.3",
  "sha3 0.12.0",
  "zeroize",
+]
+
+[[package]]
+name = "vpqc-ct-check"
+version = "0.0.1"
+dependencies = [
+ "chacha20poly1305",
+ "ed25519-dalek",
+ "getrandom 0.4.3",
+ "p384",
+ "vpqc-backend-libcrux",
+ "vpqc-hybrid",
+ "x25519-dalek",
 ]
 
 [[package]]
@@ -1944,6 +1959,19 @@ dependencies = [
  "vpqc-backend-libcrux",
  "vpqc-core",
  "x25519-dalek",
+ "zeroize",
+]
+
+[[package]]
+name = "vpqc-jose"
+version = "0.0.1"
+dependencies = [
+ "base64 0.23.1",
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "sha2",
+ "vpqc-backend-libcrux",
  "zeroize",
 ]
 

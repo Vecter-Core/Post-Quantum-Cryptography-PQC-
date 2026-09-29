@@ -123,6 +123,32 @@ Ruby `Vpqc.encrypt_file`, C `vpqc_encrypt_file`, JS/trình duyệt `new StreamEn
 lệ. Khi giải mã theo kiểu luồng (stdout, `StreamDecryptor`, `Decryptor`), các phần bản rõ được
 trả dần; nếu cuối cùng báo lỗi (ví dụ tệp bị cắt cụt) thì **phải bỏ toàn bộ dữ liệu đã nhận**.
 
+## 3a. JWT / JWS hậu lượng tử (JOSE)
+
+Token ký bằng **ML-DSA** theo draft IETF (`alg: ML-DSA-65`, khoá JWK `kty: AKP`), dùng được
+với các thư viện JOSE khác (đã kiểm với `jose` trên Node.js).
+
+```sh
+vpqc jwk generate --out issuer.jwk > issuer.pub.jwk        # khoá riêng (0600) + khoá công khai
+echo '{"sub":"alice","aud":"api"}' | vpqc jwt sign --key issuer.jwk --ttl 300 > token
+vpqc jwt verify --key issuer.pub.jwk --aud api token       # in claims, hoặc báo lỗi
+```
+
+```rust
+use vpqc_jose::{Algorithm, SigningKey, jwt};
+let key = SigningKey::generate(Algorithm::MlDsa65)?;
+let token = jwt::encode(&key, claims, 300)?;
+let claims = jwt::decode(&token, &key.verifying_key(), &jwt::Validation {
+    audience: Some("api".into()), ..Default::default()
+})?;
+```
+
+- Mặc định an toàn: `alg` phải khớp khoá (chặn `none`/đổi thuật toán), bắt buộc `exp`, token
+  có `aud` chỉ được chấp nhận khi bạn khai báo audience của mình.
+- **Kích thước:** token ML-DSA-65 khoảng 4,5 KB. Vừa header HTTP nhưng chiếm phần lớn giới hạn
+  8 KB thường gặp của proxy; kiểm tra trước khi gửi trong `Authorization`.
+- Đây là ML-DSA "thuần" (chuẩn), không phải chữ ký lai: để các hệ khác xác minh được (ADR-0008).
+
 ## 3b. Lỗi và bảo mật khi dùng
 
 - Giải mã/xác minh thất bại luôn báo lỗi gộp (`DecryptionFailed` / `VerificationFailed`): sai khoá,
