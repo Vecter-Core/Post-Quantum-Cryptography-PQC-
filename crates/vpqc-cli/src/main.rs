@@ -2,6 +2,8 @@
 
 mod cose;
 mod jose;
+mod kms;
+mod secret;
 mod ssh;
 mod x509;
 
@@ -87,6 +89,33 @@ enum Command {
         #[arg(long)]
         out: PathBuf,
         /// Overwrite existing files.
+        #[arg(long)]
+        force: bool,
+        #[command(flatten)]
+        protect: secret::ProtectArgs,
+    },
+    /// Protect a secret key file at rest: encrypt it under a passphrase (Argon2id) or under a
+    /// key held by a KMS, HSM or TPM (--kms). Protected keys work wherever a key is expected.
+    Protect {
+        /// Secret key file (plain or already protected).
+        key: PathBuf,
+        #[command(flatten)]
+        how: secret::ProtectArgs,
+        /// Output file (mode 0600).
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Overwrite an existing output file.
+        #[arg(long)]
+        force: bool,
+    },
+    /// Write the unprotected (plain) form of a protected secret key file (mode 0600).
+    Unprotect {
+        /// Protected secret key file.
+        key: PathBuf,
+        /// Output file.
+        #[arg(short, long)]
+        output: PathBuf,
+        /// Overwrite an existing output file.
         #[arg(long)]
         force: bool,
     },
@@ -366,6 +395,7 @@ fn run(cli: Cli) -> CliResult {
             profile,
             out,
             force,
+            protect,
         } => {
             let profile: Profile = profile.into();
             let pair = match purpose {
@@ -383,19 +413,44 @@ fn run(cli: Cli) -> CliResult {
                 false,
                 force,
             )?;
-            write_new(
-                Path::new(&sec_path),
-                keys::secret_to_text(&pair.secret).as_bytes(),
-                true,
-                force,
-            )?;
+            let secret_text = secret::encode(&pair.secret, &protect)?;
+            write_new(Path::new(&sec_path), secret_text.as_bytes(), true, force)?;
             eprintln!("algorithm : {}", describe_alg(pair.public.algorithm()));
             eprintln!("public    : {}", Path::new(&pub_path).display());
-            eprintln!(
-                "secret    : {}  (unencrypted; keep it private)",
-                Path::new(&sec_path).display()
-            );
+            let how = secret::describe(secret_text.as_bytes())
+                .map(|d| format!("protected: {d}"))
+                .unwrap_or_else(|| "unencrypted; keep it private or use --passphrase/--kms".into());
+            eprintln!("secret    : {}  ({how})", Path::new(&sec_path).display());
             Ok(())
+        }
+        Command::Protect {
+            key,
+            how,
+            output,
+            force,
+        } => {
+            if !how.is_set() {
+                return Err("choose --passphrase or --kms PROVIDER:LABEL".into());
+            }
+            let sk = secret::load(&key)?;
+            write_new(&output, secret::encode(&sk, &how)?.as_bytes(), true, force)?;
+            eprintln!(
+                "protected : {} ({})",
+                output.display(),
+                secret::describe(&fs::read(&output).map_err(|e| e.to_string())?)
+                    .unwrap_or_default()
+            );
+            eprintln!("check that it loads (e.g. `vpqc inspect`), then delete the plain key");
+            Ok(())
+        }
+        Command::Unprotect { key, output, force } => {
+            let sk = secret::load(&key)?;
+            write_new(
+                &output,
+                secret::encode(&sk, &secret::ProtectArgs::default())?.as_bytes(),
+                true,
+                force,
+            )
         }
         Command::Encrypt {
             to,
@@ -437,8 +492,7 @@ fn run(cli: Cli) -> CliResult {
             force,
             input,
         } => {
-            let sk =
-                keys::secret_from_bytes(&read_key_bytes(&key, "VPQC SECRET KEY")?).map_err(err)?;
+            let sk = secret::load(&key)?;
             let pks = read_public_keys(&to)?;
             let refs: Vec<_> = pks.iter().collect();
             if output.exists() && !force {
@@ -458,8 +512,7 @@ fn run(cli: Cli) -> CliResult {
             force,
             input,
         } => {
-            let sk =
-                keys::secret_from_bytes(&read_key_bytes(&key, "VPQC SECRET KEY")?).map_err(err)?;
+            let sk = secret::load(&key)?;
             run_stream(
                 false,
                 &input,
@@ -487,8 +540,7 @@ fn run(cli: Cli) -> CliResult {
             output,
             input,
         } => {
-            let sk =
-                keys::secret_from_bytes(&read_key_bytes(&key, "VPQC SECRET KEY")?).map_err(err)?;
+            let sk = secret::load(&key)?;
             let data = read_input(&input)?;
             let plain = encryption::open(&sk, &data, aad.as_bytes()).map_err(err)?;
             write_output(&output, &plain)
@@ -499,8 +551,7 @@ fn run(cli: Cli) -> CliResult {
             output,
             input,
         } => {
-            let sk =
-                keys::secret_from_bytes(&read_key_bytes(&key, "VPQC SECRET KEY")?).map_err(err)?;
+            let sk = secret::load(&key)?;
             let data = read_input(&input)?;
             let sig = signing::sign(&sk, &data, context.as_bytes()).map_err(err)?;
             write_output(&Some(output), &sig)
@@ -685,6 +736,11 @@ fn inspect(path: &Path) -> CliResult {
         return Ok(());
     }
     let raw = fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    if let Some(how) = secret::describe(&raw) {
+        // Not decrypted here: `inspect` must not prompt or call a KMS.
+        println!("secret key : protected by {how}");
+        return Ok(());
+    }
     let bytes = match std::str::from_utf8(&raw) {
         Ok(t) if t.trim_start().starts_with("-----BEGIN VPQC") => {
             let label = if t.contains("PUBLIC KEY") {

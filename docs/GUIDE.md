@@ -244,12 +244,37 @@ vpqc scan /etc/ssh                            # soát KexAlgorithms trong sshd_c
 - Môi trường CNSA 2.0/FIPS: dùng `mlkem768x25519-sha256` (ML-KEM là chuẩn NIST; sntrup761 thì
   không). Khoá host/người dùng (chữ ký) chưa có chuẩn PQ cho SSH và ít khẩn cấp hơn (ADR-0011).
 
+## 3f. Bảo vệ khoá bí mật khi lưu trữ (passphrase, KMS, TPM)
+
+```sh
+# Passphrase (Argon2id 64 MiB): hỏi trên terminal, hoặc lấy từ VPQC_PASSPHRASE_FILE / VPQC_PASSPHRASE
+vpqc keygen --purpose encrypt --out alice --passphrase
+# Khoá do KMS/TPM bọc (dùng CLI chính thức của dịch vụ, đã đăng nhập sẵn)
+vpqc keygen --purpose sign --out ci-release --kms aws-kms:alias/vpqc-signing
+vpqc protect server.vpqc-secret --kms systemd-creds:vpqc-server -o server.protected   # TPM2/khoá host
+vpqc protect app.vpqc-secret --kms gcp-kms:projects/p/locations/global/keyRings/r/cryptoKeys/vpqc -o app.protected
+vpqc protect app.vpqc-secret --kms vault-transit:transit/vpqc -o app.protected
+vpqc inspect app.protected          # cho biết được bảo vệ bằng gì, không giải mã
+vpqc decrypt --key app.protected hoso.vpqc -o hoso.pdf   # mọi lệnh nhận khoá được bảo vệ
+```
+
+- Khoá được mã hoá bằng XChaCha20-Poly1305; toàn bộ header (tham số Argon2, khoá đã bọc, nonce)
+  được xác thực. Sai passphrase, sai khoá KMS hay tệp bị sửa đều báo cùng một lỗi.
+- KMS/TPM chỉ bọc một khoá ngẫu nhiên 32 byte (KEK), không thấy khoá bí mật của bạn; quyền truy
+  cập do IAM/policy của dịch vụ quyết định. Bọc đối xứng AES-256 nên an toàn trước máy tính
+  lượng tử (ADR-0013).
+- `vpqc protect` xong, hãy kiểm tra khoá mới tải được rồi **xoá tệp khoá không mã hoá**.
+- Trên máy chủ không có người gõ passphrase: dùng `systemd-creds` (gắn với TPM của máy) hoặc KMS,
+  thay vì đặt passphrase trong biến môi trường.
+- Binding các ngôn ngữ hiện vẫn nạp khoá dạng thường: dùng `vpqc unprotect` vào tệp tạm quyền 0600
+  hoặc API Rust `vpqc::protect`.
+
 ## 3b. Lỗi và bảo mật khi dùng
 
 - Giải mã/xác minh thất bại luôn báo lỗi gộp (`DecryptionFailed` / `VerificationFailed`): sai khoá,
   sai `aad`/`context` hay dữ liệu bị sửa đều cho cùng một kết quả, để không tạo "oracle".
-- Khoá bí mật là hạt giống 32/64 byte, lưu **không mã hoá** trong tệp `.vpqc-secret` (quyền 0600).
-  Hãy đặt trong kho khoá của hệ điều hành/KMS cho dữ liệu quan trọng.
+- Khoá bí mật là hạt giống 32/64 byte trong tệp `.vpqc-secret` (quyền 0600). Mặc định tệp
+  **không mã hoá**; với dữ liệu quan trọng hãy bảo vệ nó bằng passphrase hoặc KMS/TPM (mục 3f).
 - Python, JavaScript, Java, PHP, Ruby không thể đảm bảo xoá sạch khoá khỏi bộ nhớ; lõi Rust và
   bộ đệm của C ABI thì có xoá (`zeroize`).
 - Kích thước lớn hơn RSA/ECC cổ điển: `standard` có khoá công khai 1216 byte (mã hoá) hoặc

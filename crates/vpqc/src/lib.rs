@@ -28,6 +28,7 @@ pub mod encryption;
 /// (MLS, ECH, OHTTP, ...). Most applications should use [`encryption`] instead.
 pub use vpqc_hpke as hpke;
 pub mod keys;
+pub mod protect;
 mod registry;
 pub mod signing;
 pub mod stream;
