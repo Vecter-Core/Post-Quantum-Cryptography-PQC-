@@ -7,6 +7,28 @@
 
 ---
 
+## Trạng thái triển khai (cập nhật 2026-09-29)
+
+| Hạng mục | Trạng thái | Ghi chú |
+|----------|-----------|---------|
+| Giai đoạn 0: workspace, CI, ADR, SECURITY, `deny.toml` | Xong | 5 ADR trong `docs/adr/`; MSRV 1.85 đã build thử; `cargo deny check` sạch |
+| ML-KEM-768/1024 (FIPS 203) | Xong | Backend libcrux; **khớp từng byte với RustCrypto `ml-kem`** (test vi sai) |
+| ML-DSA-65/87 (FIPS 204) | Xong | Backend libcrux; khớp từng byte với RustCrypto `ml-dsa`, kể cả chữ ký xác định |
+| X-Wing (X25519 + ML-KEM-768) | Xong | **Vượt 3/3 test vector chính thức** của draft CFRG (keygen, encaps, decaps) |
+| Chữ ký composite Ed25519 + ML-DSA-65 | Xong | Nhãn vpqc riêng, chưa tương thích dây với draft LAMPS (xem ADR-0005) |
+| Phong bì `sealed`, chữ ký tách rời, khoá dạng armor | Xong | Chống hạ cấp: header + KEM ciphertext nằm trong KDF và AAD |
+| API dễ dùng `vpqc` (`seal/open`, `sign/verify`) và CLI `vpqc` | Xong | 3 profile: `standard`, `fast-auth`, `cnsa2` |
+| Profile `high` (P-384 + ML-KEM-1024), `archive` (SLH-DSA), `fips` (aws-lc-rs) | **Chưa** | Cần crate P-384, SLH-DSA (RustCrypto còn ở bản RC), backend aws-lc-rs |
+| Backend RustCrypto làm backend chạy thật (`no_std`, WASM) | **Chưa** | Hiện chỉ dùng cho test vi sai; các crate hiện dùng `std` |
+| KAT ACVP cho ML-KEM-1024 / ML-DSA, fuzzing, đo constant-time | **Chưa** | Giai đoạn 1 còn lại / giai đoạn 5 |
+| C ABI, Python, JS/WASM và các vỏ ngôn ngữ khác | **Chưa** | Giai đoạn 2 |
+| Kiểm toán bên ngoài | **Chưa** | **Chưa dùng cho bí mật thật** |
+
+Ghi chú lệch so với sơ đồ mục 3: `vpqc-policy` hiện nằm trong `vpqc-core` (module `profile`);
+`vpqc-easy` là crate `vpqc`; backend RustCrypto chưa có adapter.
+
+---
+
 ## 0. Tầm nhìn và nguyên tắc
 
 **Mục tiêu:** một bộ thư viện giúp mọi hệ thống chống được máy tính lượng tử mà không cần

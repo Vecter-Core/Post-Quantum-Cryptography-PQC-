@@ -1,0 +1,24 @@
+[package]
+name = "vpqc-cli"
+description = "Command-line tool for vpqc: keygen, seal/open, sign/verify, inspect"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "vpqc"
+path = "src/main.rs"
+
+[dependencies]
+vpqc.workspace = true
+vpqc-core.workspace = true
+vpqc-format.workspace = true
+clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

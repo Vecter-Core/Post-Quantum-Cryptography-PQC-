@@ -1,0 +1,16 @@
+[package]
+name = "vpqc-core"
+description = "Core types, traits, algorithm IDs, profiles and policy for the vpqc post-quantum library"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+getrandom.workspace = true
+sha3.workspace = true
+zeroize.workspace = true
+
+[lints]
+workspace = true
