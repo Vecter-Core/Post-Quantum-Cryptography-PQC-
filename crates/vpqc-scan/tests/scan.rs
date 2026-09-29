@@ -389,3 +389,79 @@ fn max_file_size_is_respected() {
     assert!(r.findings.is_empty());
     assert_eq!(r.files_skipped, 1);
 }
+
+#[test]
+fn ssh_kex_algorithms_are_audited() {
+    let dir = tempfile::tempdir().unwrap();
+    let etc = dir.path().join("etc/ssh");
+    fs::create_dir_all(etc.join("sshd_config.d")).unwrap();
+    fs::write(
+        etc.join("sshd_config"),
+        "Port 22\nKexAlgorithms curve25519-sha256,ecdh-sha2-nistp256\n# KexAlgorithms mlkem768x25519-sha256\n",
+    )
+    .unwrap();
+    fs::write(
+        etc.join("sshd_config.d/10-hardening.conf"),
+        "kexalgorithms=-sntrup*,mlkem*\n",
+    )
+    .unwrap();
+    fs::write(
+        etc.join("sshd_config.d/20-ok.conf"),
+        "KexAlgorithms +diffie-hellman-group14-sha256\nKexAlgorithms -sntrup*\n",
+    )
+    .unwrap();
+    fs::write(
+        etc.join("ssh_config"),
+        "Host *\n  KexAlgorithms curve25519-sha256,mlkem768x25519-sha256\n",
+    )
+    .unwrap();
+    // Non-ASCII text across the keyword length must not panic (found by the fuzzer).
+    fs::write(
+        etc.join("sshd_config.d/30-unicode.conf"),
+        "# Cấu hình\nKexAlgorithmé x\nKexAlgorithmsé\nkexalgorithms\u{a0}curve25519-sha256\n",
+    )
+    .unwrap();
+    // Not an SSH config: the same line is only matched by the generic patterns.
+    fs::write(
+        dir.path().join("notes.conf"),
+        "KexAlgorithms mlkem768x25519-sha256\n",
+    )
+    .unwrap();
+
+    let r = scan_path(dir.path(), &Options::default()).unwrap();
+    let ssh: Vec<_> = r
+        .findings
+        .iter()
+        .filter(|f| f.algorithm.starts_with("SSH "))
+        .collect();
+    assert_eq!(ssh.len(), 3, "{ssh:#?}");
+
+    let classical = find(&r, "sshd_config", "SSH key exchange without post-quantum");
+    assert_eq!(classical.line, Some(2));
+    assert_eq!(classical.risk, Risk::QuantumVulnerable);
+    assert_eq!(classical.tier, "T0");
+    let removed = find(&r, "10-hardening.conf", "without post-quantum");
+    assert!(
+        removed.detail.contains("-sntrup*,mlkem*"),
+        "{}",
+        removed.detail
+    );
+
+    let client = find(&r, "etc/ssh/ssh_config", "SSH hybrid post-quantum");
+    assert_eq!(client.risk, Risk::PostQuantum);
+    assert!(client.detail.contains("not first"), "{}", client.detail);
+    // The audited line is not reported again as plain curve25519 / ECDH.
+    assert!(
+        !r.findings
+            .iter()
+            .any(|f| f.path.ends_with("ssh_config") && !f.algorithm.starts_with("SSH ")),
+        "{:#?}",
+        r.findings
+    );
+    assert!(!r.findings.iter().any(|f| f.path.ends_with("20-ok.conf")));
+    assert!(
+        !r.findings
+            .iter()
+            .any(|f| f.path.ends_with("notes.conf") && f.algorithm.starts_with("SSH "))
+    );
+}

@@ -161,12 +161,112 @@ fn analyse_bytes(display: &str, e: &str, bytes: &[u8], options: &Options, report
     if text.contains("-----BEGIN ") && matches!(e, "pem" | "crt" | "cer" | "key" | "pub") {
         return;
     }
+    if is_ssh_config(display) {
+        let rest = scan_ssh_config(display, text, &mut report.findings);
+        scan_text(
+            display,
+            &rest,
+            options.include_comments,
+            &mut report.findings,
+        );
+        return;
+    }
     scan_text(
         display,
         text,
         options.include_comments,
         &mut report.findings,
     );
+}
+
+/// OpenSSH client and server configuration files.
+fn is_ssh_config(display: &str) -> bool {
+    let p = Path::new(display);
+    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    let dir = p
+        .parent()
+        .and_then(|d| d.file_name())
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    matches!(name, "sshd_config" | "ssh_config")
+        || (matches!(dir, "sshd_config.d" | "ssh_config.d") && name.ends_with(".conf"))
+}
+
+const SSH_KEX_ADVICE: &str = "SSH key exchange is exposed to harvest-now-decrypt-later: remove the KexAlgorithms line to use the defaults (hybrid since OpenSSH 9.0), or put mlkem768x25519-sha256 (OpenSSH >= 9.9; older sshd refuses to start with it, run sshd -t) or sntrup761x25519-sha512@openssh.com (>= 9.0) first.";
+
+/// Audit `KexAlgorithms` lines; returns the text with those lines blanked so that the generic
+/// rules do not report the same algorithms again.
+fn scan_ssh_config(path: &str, text: &str, out: &mut Vec<Finding>) -> String {
+    use crate::model::{Family, Purpose};
+    use vpqc_ssh::{KexAudit, audit_kex_directive};
+    let client = !path.contains("sshd_config");
+    let mut rest = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let t = line.trim_start();
+        let keyword_len = "kexalgorithms".len();
+        // `get`: the line may have a multi-byte character across the keyword length.
+        let is_kex = t.len() > keyword_len
+            && t.get(..keyword_len)
+                .is_some_and(|k| k.eq_ignore_ascii_case("kexalgorithms"))
+            && t[keyword_len..].starts_with(|c: char| c.is_ascii_whitespace() || c == '=');
+        if !is_kex {
+            rest.push(line);
+            continue;
+        }
+        rest.push("");
+        let value =
+            t[keyword_len..].trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '=');
+        let (family, algorithm, detail) = match audit_kex_directive(value) {
+            KexAudit::KeepsDefault => continue,
+            KexAudit::ClassicalOnly { list } => (
+                Family::Ecdh,
+                "SSH key exchange without post-quantum hybrid",
+                format!(
+                    "KexAlgorithms lists only classical key exchanges: {}",
+                    list.join(",")
+                ),
+            ),
+            KexAudit::RemovesPostQuantum { removed } => (
+                Family::Ecdh,
+                "SSH key exchange without post-quantum hybrid",
+                format!(
+                    "KexAlgorithms -{} removes every post-quantum hybrid from the defaults",
+                    removed.join(",")
+                ),
+            ),
+            KexAudit::PostQuantum { pq, pq_first } => (
+                Family::HybridKem,
+                "SSH hybrid post-quantum key exchange",
+                if client && !pq_first {
+                    format!(
+                        "{} enabled but not first: this client prefers a classical exchange when the server offers it",
+                        pq.join(",")
+                    )
+                } else {
+                    format!("{} enabled", pq.join(","))
+                },
+            ),
+        };
+        let (risk, tier, advice) = classify(family, Purpose::KeyExchange, false);
+        out.push(Finding {
+            path: path.to_string(),
+            line: Some(i + 1),
+            source: Source::Code,
+            algorithm: algorithm.to_string(),
+            family,
+            purpose: Purpose::KeyExchange,
+            risk,
+            tier,
+            detail,
+            advice: if family == Family::HybridKem {
+                advice
+            } else {
+                SSH_KEX_ADVICE
+            },
+            long_lived: false,
+        });
+    }
+    rest.join("\n")
 }
 
 fn is_comment(line: &str) -> bool {

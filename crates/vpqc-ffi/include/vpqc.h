@@ -101,6 +101,18 @@ int vpqc_encrypt_file(const uint8_t *public_key, size_t public_key_len,
                       const uint8_t *aad, size_t aad_len,
                       const char *input_path, const char *output_path,
                       uint64_t *plaintext_len_out);
+/* Encrypt for 1..32 recipients (ADR-0009): each can decrypt with vpqc_decrypt_file and their
+ * own secret key. public_keys[i] points to public_key_lens[i] bytes. */
+int vpqc_encrypt_file_multi(const uint8_t *const *public_keys, const size_t *public_key_lens,
+                            size_t count, const uint8_t *aad, size_t aad_len,
+                            const char *input_path, const char *output_path,
+                            uint64_t *plaintext_len_out);
+/* Change the recipients of a multi-recipient file without re-encrypting its data. secret_key
+ * must belong to a current recipient; the output is readable by exactly the new recipients. */
+int vpqc_rewrap_file(const uint8_t *secret_key, size_t secret_key_len,
+                     const uint8_t *const *public_keys, const size_t *public_key_lens,
+                     size_t count, const uint8_t *aad, size_t aad_len,
+                     const char *input_path, const char *output_path, uint64_t *body_len_out);
 int vpqc_decrypt_file(const uint8_t *secret_key, size_t secret_key_len,
                       const uint8_t *aad, size_t aad_len,
                       const char *input_path, const char *output_path,

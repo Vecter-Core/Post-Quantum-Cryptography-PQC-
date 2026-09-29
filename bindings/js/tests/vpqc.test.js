@@ -98,6 +98,28 @@ test("incremental stream encryption", () => {
   throwsCode(() => { wrong.push(ct); wrong.finish(); }, "DECRYPTION_FAILED");
 });
 
+test("several recipients and rewrap", () => {
+  const a = vpqc.generateEncryptionKeypair();
+  const b = vpqc.generateEncryptionKeypair("high");
+  const c = vpqc.generateEncryptionKeypair("cnsa2");
+  const data = new Uint8Array(100_000).map((_, i) => (i * 7) & 0xff);
+  const e = new vpqc.StreamEncryptor([a.publicKey, b.publicKey], enc8("t"));
+  const ct = concat([e.push(data), e.finish()]);
+  const open = (k, bytes) => {
+    const d = new vpqc.StreamDecryptor(k.secretKey, enc8("t"));
+    return concat([d.push(bytes), d.finish()]);
+  };
+  assert.deepEqual(open(a, ct), data);
+  assert.deepEqual(open(b, ct), data);
+  throwsCode(() => open(c, ct), "DECRYPTION_FAILED");
+
+  const re = vpqc.rewrap(b.secretKey, [b.publicKey, c.publicKey], enc8("t"), ct);
+  assert.deepEqual(open(c, re), data);
+  throwsCode(() => open(a, re), "DECRYPTION_FAILED");
+  throwsCode(() => vpqc.rewrap(a.secretKey, [a.publicKey], enc8("t"), re), "DECRYPTION_FAILED");
+  assert.throws(() => new vpqc.StreamEncryptor("not a key", enc8("t")), TypeError);
+});
+
 function enc8(s) {
   return new TextEncoder().encode(s);
 }

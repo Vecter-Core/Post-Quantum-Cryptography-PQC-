@@ -68,6 +68,30 @@ final class Vpqc
     }
 
     /**
+     * Encrypt a file for several recipients (1 to 32); each decrypts with decryptFile() and their
+     * own secret key. With one recipient this still writes the envelope format, so recipients can
+     * later be changed with rewrapFile() (key rotation).
+     *
+     * @param list<PublicKey> $recipients
+     */
+    public static function encryptFileMulti(array $recipients, string $input, string $output, string $aad = ''): int
+    {
+        return Native::fileMulti(null, array_map(fn (PublicKey $k) => $k->toBytes(), $recipients), $aad, $input, $output);
+    }
+
+    /**
+     * Change the recipients of a multi-recipient file without re-encrypting it. $secret must
+     * belong to a current recipient. Removing a recipient does not revoke what they already read.
+     *
+     * @param list<PublicKey> $recipients the complete new recipient list
+     * @throws DecryptionException if $secret is not a current recipient
+     */
+    public static function rewrapFile(SecretKey $secret, array $recipients, string $input, string $output, string $aad = ''): int
+    {
+        return Native::fileMulti($secret->raw(), array_map(fn (PublicKey $k) => $k->toBytes(), $recipients), $aad, $input, $output);
+    }
+
+    /**
      * Decrypt a file produced by encryptFile(). The output appears only if the whole stream verifies.
      *
      * @throws DecryptionException for a wrong key, wrong $aad or tampering

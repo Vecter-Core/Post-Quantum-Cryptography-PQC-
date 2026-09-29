@@ -1854,6 +1854,7 @@ dependencies = [
  "chacha20poly1305",
  "libcrux-sha3",
  "serde_json",
+ "subtle",
  "tempfile",
  "vpqc-backend-libcrux",
  "vpqc-core",
@@ -1889,6 +1890,9 @@ dependencies = [
  "vpqc-format",
  "vpqc-jose",
  "vpqc-scan",
+ "vpqc-ssh",
+ "vpqc-x509",
+ "zeroize",
 ]
 
 [[package]]
@@ -1983,8 +1987,13 @@ dependencies = [
  "regex",
  "serde_json",
  "tempfile",
+ "vpqc-ssh",
  "x509-parser",
 ]
+
+[[package]]
+name = "vpqc-ssh"
+version = "0.0.1"
 
 [[package]]
 name = "vpqc-tls"
@@ -1995,6 +2004,19 @@ dependencies = [
  "rustls",
  "tokio",
  "tokio-rustls",
+]
+
+[[package]]
+name = "vpqc-x509"
+version = "0.0.1"
+dependencies = [
+ "base64 0.23.1",
+ "getrandom 0.4.3",
+ "sha2",
+ "subtle",
+ "vpqc-backend-libcrux",
+ "x509-parser",
+ "zeroize",
 ]
 
 [[package]]

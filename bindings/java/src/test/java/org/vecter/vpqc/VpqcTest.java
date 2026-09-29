@@ -158,4 +158,29 @@ class VpqcTest {
         assertThrows(VpqcException.IoException.class,
                 () -> Vpqc.encryptFile(k.publicKey(), dir.resolve("missing"), enc, new byte[0]));
     }
+
+    @Test
+    void multiRecipientAndRewrap(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+        KeyPair user = Vpqc.generateEncryptionKeypair(Profile.STANDARD);
+        KeyPair recovery = Vpqc.generateEncryptionKeypair(Profile.HIGH);
+        KeyPair outsider = Vpqc.generateEncryptionKeypair(Profile.STANDARD);
+        java.nio.file.Path in = dir.resolve("in"), enc = dir.resolve("enc"), re = dir.resolve("re");
+        java.nio.file.Files.write(in, b("shared with two keys"));
+        Vpqc.encryptFileMulti(java.util.List.of(user.publicKey(), recovery.publicKey()), in, enc, b("m"));
+        for (KeyPair k : java.util.List.of(user, recovery)) {
+            java.nio.file.Path out = dir.resolve("out");
+            java.nio.file.Files.deleteIfExists(out);
+            Vpqc.decryptFile(k.secretKey(), enc, out, b("m"));
+            assertArrayEquals(b("shared with two keys"), java.nio.file.Files.readAllBytes(out));
+        }
+        assertThrows(VpqcException.DecryptionException.class,
+                () -> Vpqc.decryptFile(outsider.secretKey(), enc, dir.resolve("x"), b("m")));
+        // Recovery drops the user and adds the outsider, without re-encrypting.
+        Vpqc.rewrapFile(recovery.secretKey(), java.util.List.of(recovery.publicKey(), outsider.publicKey()), enc, re, b("m"));
+        Vpqc.decryptFile(outsider.secretKey(), re, dir.resolve("o"), b("m"));
+        assertThrows(VpqcException.DecryptionException.class,
+                () -> Vpqc.decryptFile(user.secretKey(), re, dir.resolve("u"), b("m")));
+        assertThrows(VpqcException.DecryptionException.class,
+                () -> Vpqc.rewrapFile(user.secretKey(), java.util.List.of(user.publicKey()), re, dir.resolve("r2"), b("m")));
+    }
 }

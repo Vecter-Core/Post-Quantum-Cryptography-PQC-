@@ -464,3 +464,90 @@ fn file_stream_round_trip_and_errors() {
     assert_eq!(rc, VPQC_ERR_INVALID_ARGUMENT);
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn multi_recipient_file() {
+    use std::ffi::CString;
+    let dir = std::env::temp_dir().join(format!("vpqc-ffi-multi-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let c = |name: &str| CString::new(dir.join(name).to_str().unwrap()).unwrap();
+    std::fs::write(dir.join("in"), b"for two recipients").unwrap();
+    let (pk1, sk1) = keygen(vpqc_encryption_keygen, 1);
+    let (pk2, sk2) = keygen(vpqc_encryption_keygen, 4);
+    let (_, outsider) = keygen(vpqc_encryption_keygen, 1);
+    let ptrs = [pk1.as_ptr(), pk2.as_ptr()];
+    let lens = [pk1.len(), pk2.len()];
+    let mut n = 0u64;
+    let rc = unsafe {
+        vpqc_encrypt_file_multi(
+            ptrs.as_ptr(),
+            lens.as_ptr(),
+            2,
+            b"a".as_ptr(),
+            1,
+            c("in").as_ptr(),
+            c("ct").as_ptr(),
+            &mut n,
+        )
+    };
+    assert_eq!((rc, n), (VPQC_OK, 18));
+    for (i, sk) in [&sk1, &sk2].into_iter().enumerate() {
+        let out = format!("out{i}");
+        let rc = unsafe {
+            vpqc_decrypt_file(
+                sk.as_ptr(),
+                sk.len(),
+                b"a".as_ptr(),
+                1,
+                c("ct").as_ptr(),
+                c(&out).as_ptr(),
+                std::ptr::null_mut(),
+            )
+        };
+        assert_eq!(rc, VPQC_OK);
+        assert_eq!(
+            std::fs::read(dir.join(&out)).unwrap(),
+            b"for two recipients"
+        );
+    }
+    let rc = unsafe {
+        vpqc_decrypt_file(
+            outsider.as_ptr(),
+            outsider.len(),
+            b"a".as_ptr(),
+            1,
+            c("ct").as_ptr(),
+            c("x").as_ptr(),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(rc, VPQC_ERR_DECRYPTION_FAILED);
+    // Bad arguments: no keys, too many, null arrays, duplicate keys.
+    let bad = |ptrs: *const *const u8, lens: *const usize, count: usize| unsafe {
+        vpqc_encrypt_file_multi(
+            ptrs,
+            lens,
+            count,
+            std::ptr::null(),
+            0,
+            c("in").as_ptr(),
+            c("o").as_ptr(),
+            std::ptr::null_mut(),
+        )
+    };
+    assert_eq!(
+        bad(ptrs.as_ptr(), lens.as_ptr(), 0),
+        VPQC_ERR_INVALID_ARGUMENT
+    );
+    assert_eq!(
+        bad(ptrs.as_ptr(), lens.as_ptr(), 33),
+        VPQC_ERR_INVALID_ARGUMENT
+    );
+    assert_eq!(
+        bad(std::ptr::null(), lens.as_ptr(), 2),
+        VPQC_ERR_INVALID_ARGUMENT
+    );
+    let dup = [pk1.as_ptr(), pk1.as_ptr()];
+    assert_ne!(bad(dup.as_ptr(), lens.as_ptr(), 2), VPQC_OK);
+    std::fs::remove_dir_all(&dir).unwrap();
+}

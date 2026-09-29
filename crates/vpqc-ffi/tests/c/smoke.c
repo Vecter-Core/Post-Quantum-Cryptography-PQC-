@@ -51,6 +51,22 @@ int main(void) {
         CHECK(vpqc_decrypt_file(fsk.ptr, fsk.len, (const uint8_t *)"x", 1, enc, "vpqc-c-smoke.bad", NULL) == VPQC_ERR_DECRYPTION_FAILED);
         CHECK(fopen("vpqc-c-smoke.bad", "rb") == NULL);
         CHECK(vpqc_encrypt_file(fpk.ptr, fpk.len, NULL, 0, "vpqc-no-such-file", enc, NULL) == VPQC_ERR_IO);
+        /* Two recipients: each decrypts with its own key. */
+        vpqc_buf pk2 = {0}, sk2 = {0};
+        CHECK(vpqc_encryption_keygen(VPQC_PROFILE_HIGH, &pk2, &sk2) == VPQC_OK);
+        const uint8_t *keys[2] = {fpk.ptr, pk2.ptr};
+        size_t lens[2] = {fpk.len, pk2.len};
+        CHECK(vpqc_encrypt_file_multi(keys, lens, 2, (const uint8_t *)"m", 1, in, enc, &n) == VPQC_OK && n == 200000);
+        CHECK(vpqc_decrypt_file(fsk.ptr, fsk.len, (const uint8_t *)"m", 1, enc, out, &n) == VPQC_OK && n == 200000);
+        CHECK(vpqc_decrypt_file(sk2.ptr, sk2.len, (const uint8_t *)"m", 1, enc, out, &n) == VPQC_OK && n == 200000);
+        CHECK(vpqc_encrypt_file_multi(keys, lens, 0, NULL, 0, in, enc, NULL) == VPQC_ERR_INVALID_ARGUMENT);
+        /* Re-wrap for the second recipient only; the first can no longer decrypt. */
+        const char *re = "vpqc-c-smoke.re";
+        CHECK(vpqc_rewrap_file(fsk.ptr, fsk.len, keys + 1, lens + 1, 1, (const uint8_t *)"m", 1, enc, re, NULL) == VPQC_OK);
+        CHECK(vpqc_decrypt_file(sk2.ptr, sk2.len, (const uint8_t *)"m", 1, re, out, &n) == VPQC_OK && n == 200000);
+        CHECK(vpqc_decrypt_file(fsk.ptr, fsk.len, (const uint8_t *)"m", 1, re, "vpqc-c-smoke.bad", NULL) == VPQC_ERR_DECRYPTION_FAILED);
+        remove(re);
+        vpqc_buf_free(&pk2); vpqc_buf_free(&sk2);
         remove(in); remove(enc); remove(out);
         vpqc_buf_free(&fpk); vpqc_buf_free(&fsk);
         puts("stream file: OK");

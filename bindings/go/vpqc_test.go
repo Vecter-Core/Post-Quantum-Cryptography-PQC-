@@ -210,3 +210,62 @@ func TestFileStreaming(t *testing.T) {
 		t.Fatalf("missing input: %v", err)
 	}
 }
+
+func TestEncryptFileMulti(t *testing.T) {
+	dir := t.TempDir()
+	userPK, userSK, _ := GenerateEncryptionKeypair(ProfileStandard)
+	recPK, recSK, _ := GenerateEncryptionKeypair(ProfileHigh)
+	_, outsider, _ := GenerateEncryptionKeypair(ProfileStandard)
+	data := bytes.Repeat([]byte("multi"), 50_000)
+	in, enc := filepath.Join(dir, "in"), filepath.Join(dir, "enc")
+	if err := os.WriteFile(in, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := EncryptFileMulti([]PublicKey{userPK, recPK}, in, enc, []byte("m")); err != nil || n != uint64(len(data)) {
+		t.Fatalf("encrypt: %d %v", n, err)
+	}
+	for i, sk := range []SecretKey{userSK, recSK} {
+		out := filepath.Join(dir, fmt.Sprintf("out%d", i))
+		if _, err := DecryptFile(sk, enc, out, []byte("m")); err != nil {
+			t.Fatalf("recipient %d: %v", i, err)
+		}
+		if got, _ := os.ReadFile(out); !bytes.Equal(got, data) {
+			t.Fatalf("recipient %d: wrong plaintext", i)
+		}
+	}
+	if _, err := DecryptFile(outsider, enc, filepath.Join(dir, "x"), []byte("m")); !errors.Is(err, ErrDecryption) {
+		t.Fatalf("outsider: %v", err)
+	}
+	if _, err := EncryptFileMulti(nil, in, enc, nil); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("no recipients: %v", err)
+	}
+}
+
+func TestRewrapFile(t *testing.T) {
+	dir := t.TempDir()
+	oldPK, oldSK, _ := GenerateEncryptionKeypair(ProfileStandard)
+	newPK, newSK, _ := GenerateEncryptionKeypair(ProfileCNSA2)
+	in, v1, v2 := filepath.Join(dir, "in"), filepath.Join(dir, "v1"), filepath.Join(dir, "v2")
+	if err := os.WriteFile(in, []byte("rotate"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EncryptFileMulti([]PublicKey{oldPK}, in, v1, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RewrapFile(oldSK, []PublicKey{newPK}, v1, v2, nil); err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(dir, "out")
+	if _, err := DecryptFile(newSK, v2, out, nil); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := os.ReadFile(out); string(got) != "rotate" {
+		t.Fatalf("got %q", got)
+	}
+	if _, err := DecryptFile(oldSK, v2, filepath.Join(dir, "x"), nil); !errors.Is(err, ErrDecryption) {
+		t.Fatalf("old key still decrypts: %v", err)
+	}
+	if _, err := RewrapFile(newSK, []PublicKey{newPK}, v1, filepath.Join(dir, "y"), nil); !errors.Is(err, ErrDecryption) {
+		t.Fatalf("non-recipient re-wrapped: %v", err)
+	}
+}

@@ -101,7 +101,17 @@ fn classify_signature_oid(oid: &str) -> Option<(Family, String)> {
         "1.2.840.10045.4.3.4" => (Ecdsa, "ecdsa-with-SHA512".into()),
         "1.3.101.112" => (EdDsa, "Ed25519".into()),
         "1.3.101.113" => (EdDsa, "Ed448".into()),
-        o if o.starts_with("2.16.840.1.101.3.4.3.") => (PqSignature, "NIST PQC signature".into()),
+        // ML-DSA / SLH-DSA: the signature algorithm OID is the key OID.
+        o if o.starts_with("2.16.840.1.101.3.4.3.") => {
+            let n: u32 = o.rsplit('.').next()?.parse().ok()?;
+            match n {
+                17 => (PqSignature, "ML-DSA-44".into()),
+                18 => (PqSignature, "ML-DSA-65".into()),
+                19 => (PqSignature, "ML-DSA-87".into()),
+                20..=31 => (PqSignature, "SLH-DSA".into()),
+                _ => (PqSignature, "NIST PQC".into()),
+            }
+        }
         _ => return None,
     })
 }

@@ -95,6 +95,34 @@ func main() {
 		if _, err := vpqc.EncryptFile(pk, a[3], a[4], []byte(a[2])); err != nil {
 			die(err)
 		}
+	case "encrypt-file-multi": // encrypt-file-multi AAD IN OUT PUBFILE...
+		var pks []vpqc.PublicKey
+		for _, f := range a[4:] {
+			pk, err := vpqc.PublicKeyFromText(string(read(f)))
+			if err != nil {
+				die(err)
+			}
+			pks = append(pks, pk)
+		}
+		if _, err := vpqc.EncryptFileMulti(pks, a[2], a[3], []byte(a[1])); err != nil {
+			die(err)
+		}
+	case "rewrap-file": // rewrap-file SECFILE AAD IN OUT PUBFILE...
+		sk, err := vpqc.SecretKeyFromText(string(read(a[1])))
+		if err != nil {
+			die(err)
+		}
+		var pks []vpqc.PublicKey
+		for _, f := range a[5:] {
+			pk, err := vpqc.PublicKeyFromText(string(read(f)))
+			if err != nil {
+				die(err)
+			}
+			pks = append(pks, pk)
+		}
+		if _, err := vpqc.RewrapFile(sk, pks, a[3], a[4], []byte(a[2])); err != nil {
+			die(err)
+		}
 	case "decrypt-file": // decrypt-file SECFILE AAD IN OUT
 		sk, err := vpqc.SecretKeyFromText(string(read(a[1])))
 		if err != nil {

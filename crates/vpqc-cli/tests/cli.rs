@@ -444,3 +444,319 @@ fn jose_jwk_jws_jwt() {
         "aud not checked"
     );
 }
+
+#[test]
+fn encrypt_to_several_recipients() {
+    let dir = tempfile::tempdir().unwrap();
+    for (name, profile) in [
+        ("user", "standard"),
+        ("recovery", "high"),
+        ("outsider", "standard"),
+    ] {
+        ok(&[
+            "keygen",
+            "--purpose",
+            "encrypt",
+            "--profile",
+            profile,
+            "--out",
+            p(&dir.path().join(name)),
+        ]);
+    }
+    let key = |n: &str, ext: &str| dir.path().join(format!("{n}.{ext}"));
+    let input = dir.path().join("data");
+    std::fs::write(&input, vec![7u8; 100_000]).unwrap();
+    let enc = dir.path().join("data.vpqc");
+    ok(&[
+        "encrypt",
+        "--to",
+        p(&key("user", "pub")),
+        "--to",
+        p(&key("recovery", "pub")),
+        "--aad",
+        "bk",
+        "-o",
+        p(&enc),
+        p(&input),
+    ]);
+    let described = String::from_utf8(ok(&["inspect", p(&enc)]).stdout).unwrap();
+    assert!(described.contains("2 recipients"), "{described}");
+    for n in ["user", "recovery"] {
+        let out = dir.path().join(format!("out-{n}"));
+        ok(&[
+            "decrypt",
+            "--key",
+            p(&key(n, "vpqc-secret")),
+            "--aad",
+            "bk",
+            "-o",
+            p(&out),
+            p(&enc),
+        ]);
+        assert_eq!(std::fs::read(&out).unwrap(), vec![7u8; 100_000]);
+    }
+    let out = dir.path().join("out-outsider");
+    let r = vpqc(&[
+        "decrypt",
+        "--key",
+        p(&key("outsider", "vpqc-secret")),
+        "--aad",
+        "bk",
+        "-o",
+        p(&out),
+        p(&enc),
+    ]);
+    assert!(!r.status.success() && !out.exists());
+    let dup = vpqc(&[
+        "encrypt",
+        "--to",
+        p(&key("user", "pub")),
+        "--to",
+        p(&key("user", "pub")),
+        "-o",
+        p(&dir.path().join("d")),
+        p(&input),
+    ]);
+    assert!(!dup.status.success());
+}
+
+#[test]
+fn envelope_key_rotation_with_rewrap() {
+    let dir = tempfile::tempdir().unwrap();
+    for name in ["old", "new"] {
+        ok(&[
+            "keygen",
+            "--purpose",
+            "encrypt",
+            "--out",
+            p(&dir.path().join(name)),
+        ]);
+    }
+    let f = |n: &str| dir.path().join(n);
+    std::fs::write(f("data"), b"rotate the key, keep the data").unwrap();
+    ok(&[
+        "encrypt",
+        "--envelope",
+        "--to",
+        p(&f("old.pub")),
+        "--aad",
+        "a",
+        "-o",
+        p(&f("v1")),
+        p(&f("data")),
+    ]);
+    // A plain single-recipient file cannot be re-wrapped.
+    ok(&[
+        "encrypt",
+        "--to",
+        p(&f("old.pub")),
+        "--aad",
+        "a",
+        "-o",
+        p(&f("plain")),
+        p(&f("data")),
+    ]);
+    let r = vpqc(&[
+        "rewrap",
+        "--key",
+        p(&f("old.vpqc-secret")),
+        "--to",
+        p(&f("new.pub")),
+        "--aad",
+        "a",
+        "-o",
+        p(&f("x")),
+        p(&f("plain")),
+    ]);
+    assert!(!r.status.success() && String::from_utf8_lossy(&r.stderr).contains("re-encrypt"));
+
+    ok(&[
+        "rewrap",
+        "--key",
+        p(&f("old.vpqc-secret")),
+        "--to",
+        p(&f("new.pub")),
+        "--aad",
+        "a",
+        "-o",
+        p(&f("v2")),
+        p(&f("v1")),
+    ]);
+    ok(&[
+        "decrypt",
+        "--key",
+        p(&f("new.vpqc-secret")),
+        "--aad",
+        "a",
+        "-o",
+        p(&f("out")),
+        p(&f("v2")),
+    ]);
+    assert_eq!(
+        std::fs::read(f("out")).unwrap(),
+        b"rotate the key, keep the data"
+    );
+    assert!(
+        !vpqc(&[
+            "decrypt",
+            "--key",
+            p(&f("old.vpqc-secret")),
+            "--aad",
+            "a",
+            "-o",
+            p(&f("o2")),
+            p(&f("v2"))
+        ])
+        .status
+        .success()
+    );
+    // Refuses to overwrite without --force.
+    assert!(
+        !vpqc(&[
+            "rewrap",
+            "--key",
+            p(&f("old.vpqc-secret")),
+            "--to",
+            p(&f("new.pub")),
+            "--aad",
+            "a",
+            "-o",
+            p(&f("v2")),
+            p(&f("v1"))
+        ])
+        .status
+        .success()
+    );
+}
+
+#[test]
+fn x509_ca_issue_verify() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = |n: &str| dir.path().join(n);
+    let out = ok(&[
+        "x509",
+        "key",
+        "--alg",
+        "ML-DSA-87",
+        "--out",
+        p(&f("ca.key")),
+    ]);
+    assert!(
+        String::from_utf8(out.stdout)
+            .unwrap()
+            .starts_with("-----BEGIN PUBLIC KEY-----")
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(f("ca.key")).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    ok(&[
+        "x509",
+        "ca",
+        "--key",
+        p(&f("ca.key")),
+        "--cn",
+        "Test Root",
+        "-o",
+        p(&f("ca.pem")),
+    ]);
+    let spki = ok(&["x509", "key", "--out", p(&f("srv.key"))]).stdout;
+    std::fs::write(f("srv.pub"), spki).unwrap();
+    ok(&[
+        "x509",
+        "issue",
+        "--ca",
+        p(&f("ca.pem")),
+        "--ca-key",
+        p(&f("ca.key")),
+        "--subject-key",
+        p(&f("srv.pub")),
+        "--cn",
+        "srv",
+        "--dns",
+        "srv.example.com",
+        "--purpose",
+        "server",
+        "-o",
+        p(&f("srv.pem")),
+    ]);
+    let v = ok(&[
+        "x509",
+        "verify",
+        "--ca",
+        p(&f("ca.pem")),
+        "--dns",
+        "srv.example.com",
+        p(&f("srv.pem")),
+    ]);
+    assert!(
+        String::from_utf8(v.stdout)
+            .unwrap()
+            .trim_end()
+            .ends_with("OK")
+    );
+    assert!(
+        !vpqc(&[
+            "x509",
+            "verify",
+            "--ca",
+            p(&f("ca.pem")),
+            "--dns",
+            "other.example.com",
+            p(&f("srv.pem"))
+        ])
+        .status
+        .success()
+    );
+    assert!(
+        !vpqc(&[
+            "x509",
+            "verify",
+            "--ca",
+            p(&f("ca.pem")),
+            "--purpose",
+            "code-signing",
+            p(&f("srv.pem"))
+        ])
+        .status
+        .success()
+    );
+    // Signing with the leaf key as if it were a CA is refused.
+    assert!(
+        !vpqc(&[
+            "x509",
+            "issue",
+            "--ca",
+            p(&f("srv.pem")),
+            "--ca-key",
+            p(&f("srv.key")),
+            "--subject-key",
+            p(&f("srv.pub")),
+            "--cn",
+            "x",
+            "-o",
+            p(&f("bad.pem")),
+        ])
+        .status
+        .success()
+    );
+    // Output files are never overwritten.
+    assert!(
+        !vpqc(&[
+            "x509",
+            "ca",
+            "--key",
+            p(&f("ca.key")),
+            "--cn",
+            "Again",
+            "-o",
+            p(&f("ca.pem"))
+        ])
+        .status
+        .success()
+    );
+}

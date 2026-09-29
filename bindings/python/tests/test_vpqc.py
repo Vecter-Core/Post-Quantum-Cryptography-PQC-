@@ -172,3 +172,47 @@ def test_incremental_stream_objects(tmp_path):
         dec.finalize()
     with pytest.raises(vpqc.VpqcError):
         enc.update(b"after finalize")
+
+
+def test_multiple_recipients(tmp_path):
+    user = vpqc.generate_encryption_keypair()
+    recovery = vpqc.generate_encryption_keypair("high")
+    outsider = vpqc.generate_encryption_keypair()
+    data = bytes(range(256)) * 1000
+    src, enc = tmp_path / "in", tmp_path / "in.vpqc"
+    src.write_bytes(data)
+    assert vpqc.encrypt_file([user.public, recovery.public], src, enc, aad=b"b") == len(data)
+    for i, k in enumerate([user, recovery]):
+        vpqc.decrypt_file(k.secret, enc, tmp_path / f"out{i}", aad=b"b")
+        assert (tmp_path / f"out{i}").read_bytes() == data
+    with pytest.raises(vpqc.DecryptionError):
+        vpqc.decrypt_file(outsider.secret, enc, tmp_path / "x", aad=b"b")
+    # Incremental, and readable by the incremental decryptor of either recipient.
+    s = vpqc.StreamEncryptor((user.public, recovery.public), aad=b"s")
+    ct = s.update(data) + s.finalize()
+    for k in (user, recovery):
+        d = vpqc.StreamDecryptor(k.secret, aad=b"s")
+        assert b"".join(d.update(ct[i:i + 777]) for i in range(0, len(ct), 777)) + d.finalize() == data
+    with pytest.raises(TypeError):
+        vpqc.encrypt_file([], src, enc)
+    with pytest.raises(vpqc.VpqcError):
+        vpqc.encrypt_file([user.public, user.public], src, tmp_path / "dup")
+
+
+def test_rewrap_for_key_rotation(tmp_path):
+    old, new = vpqc.generate_encryption_keypair(), vpqc.generate_encryption_keypair("high")
+    src, v1, v2 = tmp_path / "in", tmp_path / "v1", tmp_path / "v2"
+    src.write_bytes(b"x" * 100_000)
+    vpqc.encrypt_file(old.public, src, v1, aad=b"k", envelope=True)
+    vpqc.rewrap_file(old.secret, new.public, v1, v2, aad=b"k")
+    vpqc.decrypt_file(new.secret, v2, tmp_path / "out", aad=b"k")
+    assert (tmp_path / "out").read_bytes() == b"x" * 100_000
+    with pytest.raises(vpqc.DecryptionError):
+        vpqc.decrypt_file(old.secret, v2, tmp_path / "o2", aad=b"k")
+    # Not a recipient: cannot re-wrap.
+    with pytest.raises(vpqc.DecryptionError):
+        vpqc.rewrap_file(vpqc.generate_encryption_keypair().secret, new.public, v1, tmp_path / "v3", aad=b"k")
+    # A plain single-recipient file cannot be re-wrapped.
+    vpqc.encrypt_file(old.public, src, tmp_path / "plain", aad=b"k")
+    with pytest.raises(vpqc.VpqcError):
+        vpqc.rewrap_file(old.secret, new.public, tmp_path / "plain", tmp_path / "v4", aad=b"k")

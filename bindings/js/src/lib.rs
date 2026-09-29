@@ -7,6 +7,7 @@
 
 use js_sys::Reflect;
 use vpqc::{Error, Profile, encryption, keys, signing};
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 fn fail(e: Error) -> JsValue {
@@ -149,6 +150,42 @@ fn finished() -> JsValue {
 
 /// Incremental stream encryption (ADR-0007) for data of any size, e.g. a browser `File`
 /// read through `file.stream()`. Concatenate every returned piece in order.
+/// A `Uint8Array` or an array of them, as public keys.
+fn public_keys(value: &JsValue) -> Result<Vec<vpqc::PublicKey>, JsValue> {
+    let raw: Vec<Vec<u8>> = if let Some(one) = value.dyn_ref::<js_sys::Uint8Array>() {
+        vec![one.to_vec()]
+    } else if js_sys::Array::is_array(value) {
+        js_sys::Array::from(value)
+            .iter()
+            .map(|v| {
+                v.dyn_into::<js_sys::Uint8Array>()
+                    .map(|a| a.to_vec())
+                    .map_err(|_| JsValue::from(js_sys::TypeError::new("expected Uint8Array public keys")))
+            })
+            .collect::<Result<_, _>>()?
+    } else {
+        return Err(js_sys::TypeError::new("expected a Uint8Array or an array of them").into());
+    };
+    raw.iter().map(|k| keys::public_from_bytes(k).map_err(fail)).collect()
+}
+
+/// Change the recipients of a multi-recipient stream without re-encrypting its data.
+/// `secretKey` must belong to a current recipient; returns the stream for the new recipients.
+#[wasm_bindgen]
+pub fn rewrap(
+    secret_key: &[u8],
+    #[wasm_bindgen(unchecked_param_type = "Uint8Array | Uint8Array[]")] recipients: JsValue,
+    aad: &[u8],
+    ciphertext: &[u8],
+) -> Result<Vec<u8>, JsValue> {
+    let sk = keys::secret_from_bytes(secret_key).map_err(fail)?;
+    let pks = public_keys(&recipients)?;
+    let refs: Vec<_> = pks.iter().collect();
+    let mut out = Vec::with_capacity(ciphertext.len() + 4096);
+    vpqc::stream::rewrap(&sk, aad, &refs, ciphertext, &mut out).map_err(fail_io)?;
+    Ok(out)
+}
+
 #[wasm_bindgen]
 pub struct StreamEncryptor {
     inner: Option<vpqc::stream::Encryptor<Vec<u8>>>,
@@ -156,11 +193,21 @@ pub struct StreamEncryptor {
 
 #[wasm_bindgen]
 impl StreamEncryptor {
-    /// Start a stream to `publicKey`; `aad` is authenticated context.
+    /// Start a stream to one public key, or to an array of up to 32 public keys (each
+    /// recipient decrypts with their own secret key); `aad` is authenticated context.
     #[wasm_bindgen(constructor)]
-    pub fn new(public_key: &[u8], aad: &[u8]) -> Result<StreamEncryptor, JsValue> {
-        let pk = keys::public_from_bytes(public_key).map_err(fail)?;
-        let enc = vpqc::stream::Encryptor::new(&pk, aad, Vec::new()).map_err(fail_io)?;
+    pub fn new(
+        #[wasm_bindgen(unchecked_param_type = "Uint8Array | Uint8Array[]")] recipients: JsValue,
+        aad: &[u8],
+    ) -> Result<StreamEncryptor, JsValue> {
+        let pks = public_keys(&recipients)?;
+        let refs: Vec<_> = pks.iter().collect();
+        let single = recipients.is_instance_of::<js_sys::Uint8Array>();
+        let enc = match (&refs[..], single) {
+            ([pk], true) => vpqc::stream::Encryptor::new(pk, aad, Vec::new()),
+            _ => vpqc::stream::Encryptor::to_recipients(&refs, aad, Vec::new(), Default::default()),
+        }
+        .map_err(fail_io)?;
         Ok(StreamEncryptor { inner: Some(enc) })
     }
 

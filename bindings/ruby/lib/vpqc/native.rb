@@ -30,6 +30,10 @@ module Vpqc
     attach_function :vpqc_key_from_text, %i[int buffer_in size_t pointer], :int
     attach_function :vpqc_encrypt_file, %i[buffer_in size_t buffer_in size_t string string pointer], :int
     attach_function :vpqc_decrypt_file, %i[buffer_in size_t buffer_in size_t string string pointer], :int
+    attach_function :vpqc_encrypt_file_multi,
+                    %i[pointer pointer size_t buffer_in size_t string string pointer], :int
+    attach_function :vpqc_rewrap_file,
+                    %i[buffer_in size_t pointer pointer size_t buffer_in size_t string string pointer], :int
 
     module_function
 
@@ -88,6 +92,25 @@ module Vpqc
       key, aad = bin(key), bin(aad)
       n = FFI::MemoryPointer.new(:uint64)
       check(send(fn, key, key.bytesize, aad, aad.bytesize, input.to_s, output.to_s, n))
+      n.read_uint64
+    end
+
+    # vpqc_encrypt_file_multi (secret nil) or vpqc_rewrap_file.
+    def file_multi(secret, keys, aad, input, output)
+      aad = bin(aad)
+      bufs = keys.map { |k| k = bin(k); FFI::MemoryPointer.new(:uint8, [k.bytesize, 1].max).tap { |m| m.put_bytes(0, k) } }
+      ptrs = FFI::MemoryPointer.new(:pointer, [keys.size, 1].max)
+      ptrs.write_array_of_pointer(bufs) unless bufs.empty?
+      lens = FFI::MemoryPointer.new(:size_t, [keys.size, 1].max)
+      keys.each_with_index { |k, i| lens.put(:size_t, i * FFI.type_size(:size_t), bin(k).bytesize) }
+      n = FFI::MemoryPointer.new(:uint64)
+      rc = if secret.nil?
+             vpqc_encrypt_file_multi(ptrs, lens, keys.size, aad, aad.bytesize, input.to_s, output.to_s, n)
+           else
+             secret = bin(secret)
+             vpqc_rewrap_file(secret, secret.bytesize, ptrs, lens, keys.size, aad, aad.bytesize, input.to_s, output.to_s, n)
+           end
+      check(rc)
       n.read_uint64
     end
 

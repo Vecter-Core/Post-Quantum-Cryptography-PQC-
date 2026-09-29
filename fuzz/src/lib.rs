@@ -40,6 +40,22 @@ pub fn jose_keys() -> &'static [vpqc_jose::SigningKey] {
     })
 }
 
+/// A fixed ML-DSA root (seed 0x41) and a leaf it issued (seed 0x42), created once per process.
+pub fn x509_pki() -> &'static (vpqc_x509::Certificate, vpqc_x509::Certificate) {
+    use vpqc_x509::{Algorithm, CertificateParams, PrivateKey};
+    static P: OnceLock<(vpqc_x509::Certificate, vpqc_x509::Certificate)> = OnceLock::new();
+    P.get_or_init(|| {
+        let root_key = PrivateKey::from_seed(Algorithm::MlDsa65, &[0x41; 32]);
+        let root = CertificateParams::ca("Fuzz Root", 3650).self_signed(&root_key).unwrap();
+        let leaf_key = PrivateKey::from_seed(Algorithm::MlDsa65, &[0x42; 32]);
+        let leaf = CertificateParams::end_entity("fuzz", 3650)
+            .dns_names(&["fuzz.example"])
+            .issue(leaf_key.public_key(), &root, &root_key)
+            .unwrap();
+        (root, leaf)
+    })
+}
+
 /// Consumes bytes from the front of the fuzz input.
 pub struct Input<'a>(pub &'a [u8]);
 

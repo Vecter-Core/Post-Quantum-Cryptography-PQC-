@@ -20,6 +20,11 @@ begin
     Vpqc.verify(Vpqc::PublicKey.from_text(File.read(a[0])), File.binread(a[3]), File.binread(a[2]), context: a[1])
   when "encrypt-file" # encrypt-file PUBFILE AAD IN OUT
     Vpqc.encrypt_file(Vpqc::PublicKey.from_text(File.read(a[0])), a[2], a[3], aad: a[1])
+  when "encrypt-file-multi" # encrypt-file-multi AAD IN OUT PUBFILE...
+    Vpqc.encrypt_file_multi(a[3..].map { |f| Vpqc::PublicKey.from_text(File.read(f)) }, a[1], a[2], aad: a[0])
+  when "rewrap-file" # rewrap-file SECFILE AAD IN OUT PUBFILE...
+    Vpqc.rewrap_file(Vpqc::SecretKey.from_text(File.read(a[0])), a[4..].map { |f| Vpqc::PublicKey.from_text(File.read(f)) },
+                     a[2], a[3], aad: a[1])
   when "decrypt-file" # decrypt-file SECFILE AAD IN OUT
     Vpqc.decrypt_file(Vpqc::SecretKey.from_text(File.read(a[0])), a[2], a[3], aad: a[1])
   else

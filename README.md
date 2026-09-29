@@ -25,6 +25,7 @@ Tệp lớn (sao lưu, ảnh đĩa) dùng dạng streaming, bộ nhớ không đ
 ```sh
 vpqc encrypt --to alice.pub -o backup.tar.vpqc backup.tar
 vpqc decrypt --key alice.vpqc-secret -o backup.tar backup.tar.vpqc   # chỉ ghi tệp nếu toàn bộ hợp lệ
+vpqc encrypt --to alice.pub --to recovery.pub -o backup.tar.vpqc backup.tar   # nhiều người nhận
 ```
 
 ## Thư viện theo ngôn ngữ
@@ -66,6 +67,27 @@ vpqc jwt verify --key issuer.pub.jwk token
 
 ML-DSA-65/87 theo draft IETF (`kty: AKP`), tương thích thư viện `jose` (Node.js); crate
 `vpqc-jose`.
+
+## Chứng chỉ X.509 hậu lượng tử
+
+```sh
+vpqc x509 key --alg ML-DSA-87 --out root.key > root.pub
+vpqc x509 ca --key root.key --cn "Example Root" -o root.pem
+vpqc x509 issue --ca root.pem --ca-key root.key --subject-key api.pub --cn api --dns api.example.com --purpose server -o api.pem
+vpqc x509 verify --ca root.pem --dns api.example.com api.pem
+```
+
+ML-DSA theo RFC 9881, tương thích OpenSSL (đã kiểm với Python `cryptography` và Node.js); crate `vpqc-x509`.
+
+## SSH hậu lượng tử
+
+```sh
+vpqc ssh probe git.example.com --require-pq   # máy chủ có đề xuất KEX lai (ML-KEM/sntrup761) không
+vpqc scan /etc/ssh                            # KexAlgorithms nào đang tắt KEX lai
+```
+
+Dùng KEX lai sẵn có của OpenSSH (`mlkem768x25519-sha256`), không tự làm SSH; crate `vpqc-ssh`
+(ADR-0011), đã kiểm với `sshd` thật.
 
 ## TLS lai và HPKE
 

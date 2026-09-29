@@ -150,13 +150,45 @@ mod _vpqc {
     #[pyfunction]
     fn encrypt_file(
         py: Python<'_>,
-        public_key: &[u8],
+        public_keys: Vec<Vec<u8>>,
+        aad: &[u8],
+        input: std::path::PathBuf,
+        output: std::path::PathBuf,
+        envelope: bool,
+    ) -> PyResult<u64> {
+        let pks = parse_recipients(py, &public_keys)?;
+        let refs: Vec<_> = pks.iter().collect();
+        py.detach(|| match (&refs[..], envelope) {
+            ([pk], false) => vpqc::stream::encrypt_file(pk, aad, &input, &output),
+            _ => vpqc::stream::encrypt_file_multi(&refs, aad, &input, &output),
+        })
+        .map_err(|e| io_to_py(py, e))
+    }
+
+    fn parse_recipients(py: Python<'_>, public_keys: &[Vec<u8>]) -> PyResult<Vec<vpqc::PublicKey>> {
+        if public_keys.is_empty() {
+            return Err(to_py(py, Error::Format("at least one recipient required")));
+        }
+        public_keys
+            .iter()
+            .map(|k| keys::public_from_bytes(k).map_err(|e| to_py(py, e)))
+            .collect()
+    }
+
+    /// Change the recipients of a multi-recipient file without re-encrypting it (ADR-0009).
+    #[pyfunction]
+    fn rewrap_file(
+        py: Python<'_>,
+        secret_key: &[u8],
+        public_keys: Vec<Vec<u8>>,
         aad: &[u8],
         input: std::path::PathBuf,
         output: std::path::PathBuf,
     ) -> PyResult<u64> {
-        let pk = keys::public_from_bytes(public_key).map_err(|e| to_py(py, e))?;
-        py.detach(|| vpqc::stream::encrypt_file(&pk, aad, &input, &output))
+        let sk = keys::secret_from_bytes(secret_key).map_err(|e| to_py(py, e))?;
+        let pks = parse_recipients(py, &public_keys)?;
+        let refs: Vec<_> = pks.iter().collect();
+        py.detach(|| vpqc::stream::rewrap_file(&sk, aad, &refs, &input, &output))
             .map_err(|e| io_to_py(py, e))
     }
 
@@ -183,10 +215,14 @@ mod _vpqc {
     #[pymethods]
     impl StreamEncryptor {
         #[new]
-        fn new(py: Python<'_>, public_key: &[u8], aad: &[u8]) -> PyResult<Self> {
-            let pk = keys::public_from_bytes(public_key).map_err(|e| to_py(py, e))?;
-            let enc =
-                vpqc::stream::Encryptor::new(&pk, aad, Vec::new()).map_err(|e| io_to_py(py, e))?;
+        fn new(py: Python<'_>, public_keys: Vec<Vec<u8>>, aad: &[u8]) -> PyResult<Self> {
+            let pks = parse_recipients(py, &public_keys)?;
+            let refs: Vec<_> = pks.iter().collect();
+            let enc = match refs[..] {
+                [pk] => vpqc::stream::Encryptor::new(pk, aad, Vec::new()),
+                _ => vpqc::stream::Encryptor::to_recipients(&refs, aad, Vec::new(), Default::default()),
+            }
+            .map_err(|e| io_to_py(py, e))?;
             Ok(Self { inner: Some(enc) })
         }
 

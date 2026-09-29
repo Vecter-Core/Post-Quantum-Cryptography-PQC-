@@ -1407,6 +1407,7 @@ version = "0.0.1"
 dependencies = [
  "chacha20poly1305",
  "libcrux-sha3",
+ "subtle",
  "vpqc-backend-libcrux",
  "vpqc-core",
  "vpqc-format",
@@ -1455,6 +1456,8 @@ dependencies = [
  "vpqc-hpke",
  "vpqc-jose",
  "vpqc-scan",
+ "vpqc-ssh",
+ "vpqc-x509",
 ]
 
 [[package]]
@@ -1507,7 +1510,25 @@ dependencies = [
  "base64",
  "regex",
  "serde_json",
+ "vpqc-ssh",
  "x509-parser",
+]
+
+[[package]]
+name = "vpqc-ssh"
+version = "0.0.1"
+
+[[package]]
+name = "vpqc-x509"
+version = "0.0.1"
+dependencies = [
+ "base64",
+ "getrandom",
+ "sha2",
+ "subtle",
+ "vpqc-backend-libcrux",
+ "x509-parser",
+ "zeroize",
 ]
 
 [[package]]

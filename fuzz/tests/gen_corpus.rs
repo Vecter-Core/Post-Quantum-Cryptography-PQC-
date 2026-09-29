@@ -44,6 +44,13 @@ fn gen_corpus() {
             put("parse_formats", &format!("stream-{i}-{j}"), &ct[..ct.len().min(1800)]);
         }
         put("stream", &format!("roundtrip-{i}"), &framed(1, i8, &[3], b"s", &msg));
+        put("stream", &format!("roundtrip-multi-{i}"), &framed(0x81, i8, &[3], b"s", &msg[..700]));
+        let other = &enc_keys()[(i + 1) % 4];
+        let mut e = Encryptor::to_recipients(&[&kp.public, &other.public], b"s", Vec::new(), StreamOptions { chunk_log: 10 }).unwrap();
+        e.write_all(&msg[..2100]).unwrap();
+        let multi = e.finish().unwrap();
+        put("stream", &format!("multi-{i}"), &framed(0, i8, &[2], b"s", &multi));
+        put("parse_formats", &format!("multistream-{i}"), &multi);
     }
     for (i, kp) in sig_keys().iter().enumerate() {
         let i8 = i as u8;
@@ -64,6 +71,13 @@ fn gen_corpus() {
         put("jose", &format!("pubjwk-{i}"), &[[1, i8].as_slice(), key.verifying_key().to_jwk().as_bytes()].concat());
         put("jose", &format!("roundtrip-{i}"), &[2, i8, 7, 3, b'h', b'i']);
     }
+    let (root, leaf) = vpqc_fuzz::x509_pki();
+    put("x509", "root", root.der());
+    put("x509", "leaf", leaf.der());
+    put("x509", "leaf-pem", leaf.to_pem().as_bytes());
+    let k = vpqc_x509::PrivateKey::from_seed(vpqc_x509::Algorithm::MlDsa87, &[0x43; 32]);
+    put("x509", "pkcs8", &k.to_pkcs8_der());
+    put("x509", "spki", &k.public_key().to_spki_der());
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../crates/vpqc-scan/tests/fixtures");
     for entry in std::fs::read_dir(fixtures).unwrap() {
         let entry = entry.unwrap();

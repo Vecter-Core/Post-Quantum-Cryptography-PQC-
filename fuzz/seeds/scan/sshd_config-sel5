@@ -1,0 +1,4 @@
+Port 22
+KexAlgorithms curve25519-sha256
+kexalgorithms=-*
+KexAlgorithms ^mlkem768x25519-sha256

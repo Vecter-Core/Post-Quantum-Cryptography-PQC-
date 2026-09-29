@@ -46,6 +46,10 @@ try {
     case "verify": vpqc.verify(pub(a[0]), read(a[3]), enc(a[1]), read(a[2])); break;
     case "encrypt-file": pipeFile(new vpqc.StreamEncryptor(pub(a[0]), enc(a[1])), a[2], a[3]); break;
     case "decrypt-file": pipeFile(new vpqc.StreamDecryptor(sec(a[0]), enc(a[1])), a[2], a[3]); break;
+    case "encrypt-file-multi": // AAD IN OUT PUBFILE...
+      pipeFile(new vpqc.StreamEncryptor(a.slice(3).map(pub), enc(a[0])), a[1], a[2]); break;
+    case "rewrap-file": // SECFILE AAD IN OUT PUBFILE...
+      fs.writeFileSync(a[3], vpqc.rewrap(sec(a[0]), a.slice(4).map(pub), enc(a[1]), fs.readFileSync(a[2]))); break;
     default: throw new Error(`unknown command ${cmd}`);
   }
 } catch (e) {

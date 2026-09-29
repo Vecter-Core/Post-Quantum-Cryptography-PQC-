@@ -620,6 +620,111 @@ pub unsafe extern "C" fn vpqc_encrypt_file(
     })
 }
 
+/// Parse `count` public keys from parallel pointer / length arrays.
+///
+/// # Safety
+/// Both arrays must hold `count` elements, each key pointer valid for its length.
+unsafe fn recipients(
+    public_keys: *const *const u8,
+    public_key_lens: *const usize,
+    count: usize,
+) -> Result<Vec<vpqc::PublicKey>, i32> {
+    if public_keys.is_null() || public_key_lens.is_null() || count == 0 || count > 32 {
+        return Err(VPQC_ERR_INVALID_ARGUMENT);
+    }
+    // SAFETY: both arrays hold `count` elements per the contract.
+    let (ptrs, lens) = unsafe {
+        (
+            std::slice::from_raw_parts(public_keys, count),
+            std::slice::from_raw_parts(public_key_lens, count),
+        )
+    };
+    let mut pks = Vec::with_capacity(count);
+    for (&p, &n) in ptrs.iter().zip(lens) {
+        // SAFETY: each key pointer is valid for its length per the contract.
+        let bytes = unsafe { slice(p, n)? };
+        pks.push(keys::public_from_bytes(bytes).map_err(|e| code(&e))?);
+    }
+    Ok(pks)
+}
+
+/// Encrypt the file at `input_path` for several recipients (1 to 32); any of them can decrypt
+/// it with [`vpqc_decrypt_file`] and their own secret key. `public_keys[i]` points to a key of
+/// `public_key_lens[i]` bytes.
+///
+/// # Safety
+/// `public_keys` and `public_key_lens` must be arrays of `count` elements, each key pointer
+/// valid for its length; otherwise as [`vpqc_encrypt_file`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vpqc_encrypt_file_multi(
+    public_keys: *const *const u8,
+    public_key_lens: *const usize,
+    count: usize,
+    aad: *const u8,
+    aad_len: usize,
+    input_path: *const std::ffi::c_char,
+    output_path: *const std::ffi::c_char,
+    plaintext_len_out: *mut u64,
+) -> i32 {
+    guard(|| {
+        // SAFETY: forwarded caller contract.
+        let pks = unsafe { recipients(public_keys, public_key_lens, count)? };
+        let refs: Vec<_> = pks.iter().collect();
+        // SAFETY: forwarded caller contract.
+        let (aad, input, output) =
+            unsafe { (slice(aad, aad_len)?, path(input_path)?, path(output_path)?) };
+        let n =
+            vpqc::stream::encrypt_file_multi(&refs, aad, input, output).map_err(|e| io_code(&e))?;
+        if !plaintext_len_out.is_null() {
+            // SAFETY: non-null and valid per the contract.
+            unsafe { plaintext_len_out.write(n) };
+        }
+        Ok(())
+    })
+}
+
+/// Change the recipients of a multi-recipient stream file without re-encrypting its body
+/// (ADR-0009). `secret_key` must belong to a current recipient; the output (replaced
+/// atomically) is readable by exactly the new recipients. `body_len_out` may be null.
+///
+/// # Safety
+/// As [`vpqc_encrypt_file_multi`]; `secret_key` must be valid for `secret_key_len` bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vpqc_rewrap_file(
+    secret_key: *const u8,
+    secret_key_len: usize,
+    public_keys: *const *const u8,
+    public_key_lens: *const usize,
+    count: usize,
+    aad: *const u8,
+    aad_len: usize,
+    input_path: *const std::ffi::c_char,
+    output_path: *const std::ffi::c_char,
+    body_len_out: *mut u64,
+) -> i32 {
+    guard(|| {
+        // SAFETY: forwarded caller contract.
+        let (sk, pks, aad, input, output) = unsafe {
+            (
+                slice(secret_key, secret_key_len)?,
+                recipients(public_keys, public_key_lens, count)?,
+                slice(aad, aad_len)?,
+                path(input_path)?,
+                path(output_path)?,
+            )
+        };
+        let sk = keys::secret_from_bytes(sk).map_err(|e| code(&e))?;
+        let refs: Vec<_> = pks.iter().collect();
+        let n =
+            vpqc::stream::rewrap_file(&sk, aad, &refs, input, output).map_err(|e| io_code(&e))?;
+        if !body_len_out.is_null() {
+            // SAFETY: non-null and valid per the contract.
+            unsafe { body_len_out.write(n) };
+        }
+        Ok(())
+    })
+}
+
 /// Decrypt a stream file. The output file appears (atomically, mode 0600 on Unix) only if the
 /// whole stream verifies; on any failure no output is left behind.
 ///

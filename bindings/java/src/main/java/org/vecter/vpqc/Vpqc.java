@@ -129,6 +129,38 @@ public final class Vpqc {
     }
 
     /**
+     * Encrypts a file for several recipients (1 to 32, possibly of different profiles); each can
+     * decrypt it with {@link #decryptFile} and their own secret key. With one recipient this
+     * still writes the multi-recipient (envelope) format, so recipients can later be changed with
+     * {@link #rewrapFile} (key rotation).
+     *
+     * @param recipients recipient public keys
+     * @param input file to encrypt
+     * @param output encrypted file (replaced atomically)
+     * @param aad authenticated context (may be empty)
+     * @return number of plaintext bytes
+     */
+    public static long encryptFileMulti(java.util.List<PublicKey> recipients, java.nio.file.Path input,
+                                        java.nio.file.Path output, byte[] aad) {
+        return Native.fileMulti(null, recipients.stream().map(PublicKey::raw).toList(), aad,
+                input.toString(), output.toString());
+    }
+
+    /**
+     * Changes the recipients of a multi-recipient file without re-encrypting its data.
+     * {@code secret} must belong to a current recipient; the output is readable by exactly
+     * {@code recipients}. Removing a recipient does not revoke what they already decrypted.
+     *
+     * @return number of body bytes copied
+     * @throws VpqcException.DecryptionException if {@code secret} is not a current recipient
+     */
+    public static long rewrapFile(SecretKey secret, java.util.List<PublicKey> recipients, java.nio.file.Path input,
+                                  java.nio.file.Path output, byte[] aad) {
+        return Native.fileMulti(secret.raw(), recipients.stream().map(PublicKey::raw).toList(), aad,
+                input.toString(), output.toString());
+    }
+
+    /**
      * Decrypts a file produced by {@link #encryptFile}. The output file appears only if the whole
      * stream verifies; otherwise no output is left behind.
      *

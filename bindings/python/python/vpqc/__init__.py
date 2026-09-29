@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Sequence, Tuple, Union
 
 from . import _vpqc
 from .errors import (
@@ -33,6 +33,7 @@ __all__ = [
     "is_valid",
     "encrypt_file",
     "decrypt_file",
+    "rewrap_file",
     "StreamEncryptor",
     "StreamDecryptor",
     "profiles",
@@ -183,15 +184,52 @@ def is_valid(
 PathLike = Union[str, "os.PathLike[str]"]
 
 
+def _recipients(public_key: Union["PublicKey", Sequence["PublicKey"]]) -> List[bytes]:
+    keys = [public_key] if isinstance(public_key, PublicKey) else list(public_key)
+    if not keys or not all(isinstance(k, PublicKey) for k in keys):
+        raise TypeError("expected a PublicKey or a non-empty sequence of PublicKey")
+    return [k.data for k in keys]
+
+
 def encrypt_file(
-    public_key: PublicKey, input_path: PathLike, output_path: PathLike, *, aad: BytesLike = b""
+    public_key: Union["PublicKey", Sequence["PublicKey"]],
+    input_path: PathLike,
+    output_path: PathLike,
+    *,
+    aad: BytesLike = b"",
+    envelope: bool = False,
 ) -> int:
     """Encrypt a file of any size in constant memory (streaming format, ADR-0007).
 
+    Pass a list of public keys to encrypt for several recipients (up to 32, e.g. a user key
+    and a recovery key); each can decrypt with their own secret key (ADR-0009). With
+    ``envelope=True`` a single recipient also gets that format, so the recipients can later be
+    changed with :func:`rewrap_file` (key rotation).
     The output file is replaced atomically. Returns the number of plaintext bytes.
     Raises ``OSError`` for file errors.
     """
-    return _vpqc.encrypt_file(public_key.data, _b(aad), os.fspath(input_path), os.fspath(output_path))
+    return _vpqc.encrypt_file(
+        _recipients(public_key), _b(aad), os.fspath(input_path), os.fspath(output_path), envelope
+    )
+
+
+def rewrap_file(
+    secret_key: SecretKey,
+    public_key: Union["PublicKey", Sequence["PublicKey"]],
+    input_path: PathLike,
+    output_path: PathLike,
+    *,
+    aad: BytesLike = b"",
+) -> int:
+    """Change the recipients of a multi-recipient file without re-encrypting its data.
+
+    ``secret_key`` must belong to a current recipient; the output is readable by exactly the
+    new recipients. Removing someone does not revoke what they already decrypted: re-encrypt
+    to revoke. Returns the number of body bytes copied.
+    """
+    return _vpqc.rewrap_file(
+        secret_key.data, _recipients(public_key), _b(aad), os.fspath(input_path), os.fspath(output_path)
+    )
 
 
 def decrypt_file(
@@ -212,8 +250,8 @@ class StreamEncryptor:
     ``finalize()`` returns the last piece. The result is readable by :func:`decrypt_file`.
     """
 
-    def __init__(self, public_key: PublicKey, *, aad: BytesLike = b"") -> None:
-        self._inner = _vpqc.StreamEncryptor(public_key.data, _b(aad))
+    def __init__(self, public_key: Union["PublicKey", Sequence["PublicKey"]], *, aad: BytesLike = b"") -> None:
+        self._inner = _vpqc.StreamEncryptor(_recipients(public_key), _b(aad))
 
     def update(self, data: BytesLike) -> bytes:
         return self._inner.update(_b(data))

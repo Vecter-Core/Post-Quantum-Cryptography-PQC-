@@ -50,6 +50,10 @@ public final class JavaDriver {
                         args[2].getBytes(StandardCharsets.UTF_8), read(args[3]));
                 case "encrypt-file" -> Vpqc.encryptFile(PublicKey.fromText(text(args[1])), Path.of(args[3]),
                         Path.of(args[4]), args[2].getBytes(StandardCharsets.UTF_8));
+                case "encrypt-file-multi" -> Vpqc.encryptFileMulti(publics(args, 4), Path.of(args[2]),
+                        Path.of(args[3]), args[1].getBytes(StandardCharsets.UTF_8));
+                case "rewrap-file" -> Vpqc.rewrapFile(SecretKey.fromText(text(args[1])), publics(args, 5),
+                        Path.of(args[3]), Path.of(args[4]), args[2].getBytes(StandardCharsets.UTF_8));
                 case "decrypt-file" -> Vpqc.decryptFile(SecretKey.fromText(text(args[1])), Path.of(args[3]),
                         Path.of(args[4]), args[2].getBytes(StandardCharsets.UTF_8));
                 default -> throw new IllegalArgumentException("unknown command " + cmd);
@@ -58,5 +62,13 @@ public final class JavaDriver {
             System.err.println("java-driver: " + e.getMessage());
             System.exit(1);
         }
+    }
+
+    private static java.util.List<PublicKey> publics(String[] args, int from) throws Exception {
+        java.util.List<PublicKey> keys = new java.util.ArrayList<>();
+        for (int i = from; i < args.length; i++) {
+            keys.add(PublicKey.fromText(text(args[i])));
+        }
+        return keys;
     }
 }

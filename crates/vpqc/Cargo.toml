@@ -18,9 +18,11 @@ vpqc-format.workspace = true
 vpqc-hpke.workspace = true
 chacha20poly1305.workspace = true
 libcrux-sha3.workspace = true
+subtle.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+vpqc-format.workspace = true
 tempfile = "3"
 serde_json.workspace = true
 vpqc-core.workspace = true

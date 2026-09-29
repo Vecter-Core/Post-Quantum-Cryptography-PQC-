@@ -246,6 +246,55 @@ final class Native {
         }
     }
 
+    private static final FunctionDescriptor DESC_FILE_MULTI = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+
+    private static final FunctionDescriptor DESC_REWRAP = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+
+    /**
+     * vpqc_encrypt_file_multi (secret == null) or vpqc_rewrap_file (secret = a current
+     * recipient's key). Returns the number of plaintext / body bytes.
+     */
+    static long fileMulti(byte[] secret, java.util.List<byte[]> recipients, byte[] aad, String input, String output) {
+        try (Arena arena = Arena.ofConfined()) {
+            int count = recipients.size();
+            MemorySegment ptrs = arena.allocate(ValueLayout.ADDRESS.byteSize() * Math.max(count, 1),
+                    ValueLayout.ADDRESS.byteAlignment());
+            MemorySegment lens = arena.allocate(ValueLayout.JAVA_LONG.byteSize() * Math.max(count, 1),
+                    ValueLayout.JAVA_LONG.byteAlignment());
+            for (int i = 0; i < count; i++) {
+                byte[] key = recipients.get(i);
+                ptrs.setAtIndex(ValueLayout.ADDRESS, i, copyIn(arena, key));
+                lens.setAtIndex(ValueLayout.JAVA_LONG, i, key.length);
+            }
+            MemorySegment n = arena.allocate(ValueLayout.JAVA_LONG);
+            MemorySegment in = cString(arena, input);
+            MemorySegment out = cString(arena, output);
+            if (secret == null) {
+                check(invoke(handle("vpqc_encrypt_file_multi", DESC_FILE_MULTI),
+                        ptrs, lens, (long) count, copyIn(arena, aad), (long) aad.length, in, out, n));
+            } else {
+                MemorySegment k = copyIn(arena, secret);
+                try {
+                    check(invoke(handle("vpqc_rewrap_file", DESC_REWRAP),
+                            k, (long) secret.length, ptrs, lens, (long) count,
+                            copyIn(arena, aad), (long) aad.length, in, out, n));
+                } finally {
+                    k.fill((byte) 0);
+                }
+            }
+            return n.get(ValueLayout.JAVA_LONG, 0);
+        }
+    }
+
     private static MemorySegment cString(Arena arena, String s) {
         byte[] b = s.getBytes(StandardCharsets.UTF_8);
         MemorySegment seg = arena.allocate(b.length + 1L);

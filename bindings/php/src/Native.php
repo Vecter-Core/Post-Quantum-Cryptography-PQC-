@@ -34,6 +34,8 @@ int vpqc_key_to_text(int kind, const char *key, size_t key_len, vpqc_buf *out);
 int vpqc_key_from_text(int kind, const char *text, size_t text_len, vpqc_buf *out);
 int vpqc_encrypt_file(const char *pk, size_t pk_len, const char *aad, size_t aad_len, const char *in, const char *out, uint64_t *n);
 int vpqc_decrypt_file(const char *sk, size_t sk_len, const char *aad, size_t aad_len, const char *in, const char *out, uint64_t *n);
+int vpqc_encrypt_file_multi(const unsigned char **pks, const size_t *pk_lens, size_t count, const char *aad, size_t aad_len, const char *in, const char *out, uint64_t *n);
+int vpqc_rewrap_file(const char *sk, size_t sk_len, const unsigned char **pks, const size_t *pk_lens, size_t count, const char *aad, size_t aad_len, const char *in, const char *out, uint64_t *n);
 C;
 
     private static ?FFI $ffi = null;
@@ -105,6 +107,36 @@ C;
         $ffi = self::ffi();
         $n = $ffi->new('uint64_t');
         self::check($ffi->$fn($key, strlen($key), $aad, strlen($aad), $in, $out, FFI::addr($n)));
+        return $n->cdata;
+    }
+
+    /**
+     * vpqc_encrypt_file_multi ($secret === null) or vpqc_rewrap_file.
+     *
+     * @param list<string> $keys raw public keys
+     */
+    public static function fileMulti(?string $secret, array $keys, string $aad, string $in, string $out): int
+    {
+        $ffi = self::ffi();
+        $count = count($keys);
+        $size = max($count, 1);
+        $ptrs = $ffi->new("const unsigned char *[$size]");
+        $lens = $ffi->new("size_t[$size]");
+        $held = [];
+        foreach (array_values($keys) as $i => $key) {
+            $buf = $ffi->new('unsigned char[' . max(strlen($key), 1) . ']');
+            FFI::memcpy($buf, $key, strlen($key));
+            $held[] = $buf; // keep alive until the call returns
+            $ptrs[$i] = $ffi->cast('const unsigned char *', $buf);
+            $lens[$i] = strlen($key);
+        }
+        $n = $ffi->new('uint64_t');
+        if ($secret === null) {
+            $rc = $ffi->vpqc_encrypt_file_multi($ptrs, $lens, $count, $aad, strlen($aad), $in, $out, FFI::addr($n));
+        } else {
+            $rc = $ffi->vpqc_rewrap_file($secret, strlen($secret), $ptrs, $lens, $count, $aad, strlen($aad), $in, $out, FFI::addr($n));
+        }
+        self::check($rc);
         return $n->cdata;
     }
 

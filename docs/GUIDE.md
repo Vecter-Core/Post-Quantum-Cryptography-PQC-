@@ -119,6 +119,32 @@ Go `EncryptFile/DecryptFile`, Java `Vpqc.encryptFile/decryptFile`, PHP `Vpqc::en
 Ruby `Vpqc.encrypt_file`, C `vpqc_encrypt_file`, JS/trình duyệt `new StreamEncryptor(...)` /
 `new StreamDecryptor(...)` (dùng với `file.stream()`).
 
+**Nhiều người nhận** (ADR-0009): lặp lại `--to` (tối đa 32), ví dụ khoá của người dùng và một
+khoá khôi phục cất ngoại tuyến. Mỗi người mở bằng khoá bí mật của chính mình; profile có thể khác nhau.
+
+```sh
+vpqc encrypt --to alice.pub --to recovery.pub --aad backup/2026-09 -o db.vpqc db.dump
+```
+
+```python
+vpqc.encrypt_file([alice.public, recovery.public], "db.dump", "db.vpqc", aad=b"backup/2026-09")
+```
+
+Có ở mọi ngôn ngữ (Go `EncryptFileMulti`, Java/PHP `encryptFileMulti`, Ruby
+`encrypt_file_multi`, JS `new StreamEncryptor([k1, k2], aad)`, C `vpqc_encrypt_file_multi`).
+Người nhận không chứng minh được ai đã tạo tệp: nếu nguồn gốc quan trọng, hãy ký tệp.
+
+**Xoay khoá / đổi người nhận không mã hoá lại dữ liệu** (`rewrap`, kiểu "re-wrap data key"
+của KMS). Một người nhận hiện tại tạo tệp mới cho danh sách người nhận mới; thân tệp giữ nguyên:
+
+```sh
+vpqc encrypt --envelope --to key-2026.pub -o db.vpqc db.dump      # --envelope: để xoay khoá được
+vpqc rewrap --key key-2026.vpqc-secret --to key-2027.pub -o db.2027.vpqc db.vpqc
+```
+
+Bỏ một người nhận chỉ ngăn họ mở **tệp mới**; họ có thể đã giữ tệp cũ hoặc khoá tệp. Muốn thu
+hồi thật sự dữ liệu họ từng đọc được thì phải mã hoá lại.
+
 **Quy tắc quan trọng:** khi giải mã ra **tệp**, tệp đích chỉ xuất hiện nếu toàn bộ luồng hợp
 lệ. Khi giải mã theo kiểu luồng (stdout, `StreamDecryptor`, `Decryptor`), các phần bản rõ được
 trả dần; nếu cuối cùng báo lỗi (ví dụ tệp bị cắt cụt) thì **phải bỏ toàn bộ dữ liệu đã nhận**.
@@ -148,6 +174,50 @@ let claims = jwt::decode(&token, &key.verifying_key(), &jwt::Validation {
 - **Kích thước:** token ML-DSA-65 khoảng 4,5 KB. Vừa header HTTP nhưng chiếm phần lớn giới hạn
   8 KB thường gặp của proxy; kiểm tra trước khi gửi trong `Authorization`.
 - Đây là ML-DSA "thuần" (chuẩn), không phải chữ ký lai: để các hệ khác xác minh được (ADR-0008).
+
+## 3c. Chứng chỉ X.509 hậu lượng tử (ML-DSA)
+
+Chứng chỉ theo RFC 9881, dùng được với OpenSSL ≥ 3.5 (đã kiểm với `cryptography` và Node.js):
+
+```sh
+vpqc x509 key --alg ML-DSA-87 --out root.key > root.pub            # CA gốc sống lâu: ML-DSA-87
+vpqc x509 ca --key root.key --cn "Công ty X Root CA" --days 7300 -o root.pem
+vpqc x509 key --out api.key > api.pub
+vpqc x509 issue --ca root.pem --ca-key root.key --subject-key api.pub \
+  --cn api.congtyx.vn --dns api.congtyx.vn --purpose server --days 90 -o api.pem
+vpqc x509 verify --ca root.pem --dns api.congtyx.vn api.pem
+```
+
+- Khoá riêng ở dạng PKCS#8 "seed" (54 byte, quyền 0600); đọc được khoá của OpenSSL/Node.
+- `verify` là bộ kiểm tra chuỗi **tối giản** cho chuỗi toàn ML-DSA (chữ ký, hạn, CA, pathLen,
+  key usage, EKU, tên DNS). Không có thu hồi (CRL/OCSP) hay name constraints; với TLS dùng
+  trình duyệt/thư viện chuẩn khi chúng hỗ trợ ML-DSA.
+- Chứng chỉ ML-DSA **lớn** (leaf 5,6–6,9 KB, chuỗi ~14 KB): cân nhắc cho thiết bị nhúng và TLS.
+
+## 3d. SSH hậu lượng tử (OpenSSH)
+
+OpenSSH đã có trao đổi khoá lai: `sntrup761x25519-sha512` (mặc định từ 9.0) và
+`mlkem768x25519-sha256` (ML-KEM, từ 9.9, mặc định từ 10.0). Việc cần làm là **đừng tắt nó**
+và tìm máy chủ chưa có:
+
+```sh
+vpqc ssh probe git.congtyx.vn                 # máy chủ đề xuất những KEX nào
+vpqc ssh probe 10.0.0.5:2222 --require-pq     # mã thoát 2 nếu không có KEX lai (dùng trong CI)
+vpqc ssh probe host --json                    # cho script quét cả dàn máy
+vpqc scan /etc/ssh                            # soát KexAlgorithms trong sshd_config/ssh_config
+```
+
+- `probe` chỉ đọc gói `KEXINIT` (gửi rõ trước khi xác thực), không đăng nhập, không cần khoá.
+- Cấu hình khuyên dùng: **xoá dòng `KexAlgorithms`** để dùng mặc định, hoặc đặt
+  `KexAlgorithms mlkem768x25519-sha256,sntrup761x25519-sha512@openssh.com,curve25519-sha256`
+  (lai đứng đầu). Ở phía client, thứ tự của client quyết định: lai phải đứng **đầu**.
+- **Cẩn thận:** OpenSSH < 9.9 không biết `mlkem768x25519-sha256` và `sshd` **từ chối khởi
+  động** ("Unsupported KEX algorithm"). Luôn chạy `sshd -t` trước khi reload; với 9.0–9.8 bỏ
+  tên `mlkem…` khỏi danh sách (vẫn còn `sntrup761x25519-sha512@openssh.com`).
+- `KexAlgorithms -sntrup*,mlkem*` hay danh sách chỉ gồm `curve25519`/`ecdh-*` bị `scan`
+  báo T0. `+...`/`^...` giữ nguyên các KEX lai mặc định nên không bị báo.
+- Môi trường CNSA 2.0/FIPS: dùng `mlkem768x25519-sha256` (ML-KEM là chuẩn NIST; sntrup761 thì
+  không). Khoá host/người dùng (chữ ký) chưa có chuẩn PQ cho SSH và ít khẩn cấp hơn (ADR-0011).
 
 ## 3b. Lỗi và bảo mật khi dùng
 

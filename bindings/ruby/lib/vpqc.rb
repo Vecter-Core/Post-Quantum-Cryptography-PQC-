@@ -155,6 +155,19 @@ module Vpqc
       Native.file(:vpqc_encrypt_file, public_key.bytes, aad, input, output)
     end
 
+    # Encrypt a file for several recipients (1 to 32); each decrypts with #decrypt_file and their
+    # own secret key. With one recipient this still writes the envelope format, so recipients can
+    # later be changed with #rewrap_file (key rotation).
+    def encrypt_file_multi(public_keys, input, output, aad: "")
+      Native.file_multi(nil, public_keys.map(&:bytes), aad, input, output)
+    end
+
+    # Change the recipients of a multi-recipient file without re-encrypting it. secret_key must
+    # belong to a current recipient; removing someone does not revoke what they already read.
+    def rewrap_file(secret_key, public_keys, input, output, aad: "")
+      Native.file_multi(secret_key.raw, public_keys.map(&:bytes), aad, input, output)
+    end
+
     # Decrypt a file produced by #encrypt_file. The output appears only if the whole stream
     # verifies; raises Vpqc::DecryptionError otherwise.
     def decrypt_file(secret_key, input, output, aad: "")
