@@ -32,6 +32,9 @@
 | **Test tương tác chéo ngôn ngữ** (`interop/run.sh`) | Xong | CLI Rust, Python, Node, Go, Java, PHP, Ruby: **5502 kiểm tra, 0 lỗi (4 profile)** (mọi tổ hợp sinh khoá × mã hoá × giải mã, ký × xác minh, sai context, dữ liệu bị sửa) |
 | Parser: fuzz nhẹ (>600.000 đầu vào ngẫu nhiên/biến dị) | Xong | `vpqc-format/tests/robustness.rs`; fuzz theo độ phủ (`cargo-fuzz`) vẫn chưa |
 | Công cụ di trú `vpqc scan`: kiểm kê mật mã (mã nguồn, cấu hình, chứng chỉ X.509, khoá), xếp hạng T0-T4, xuất **CBOM CycloneDX 1.6** | Xong | `crates/vpqc-scan`; chứng chỉ/khoá phân tích chính xác, mã nguồn theo mẫu (heuristic, ghi rõ); CBOM **hợp lệ theo schema chính thức**; `--fail-on` để chặn trong CI; không bao giờ in khoá |
+| **HPKE** (`crates/vpqc-hpke`, RFC 9180bis + draft-ietf-hpke-pq): X-Wing, MLKEM1024-P384, ML-KEM-768/1024; HKDF-SHA2 và SHAKE; AES-GCM, ChaCha20-Poly1305 | Xong | **Vượt 5/5 vector chính thức áp dụng được**; chế độ base/PSK, export; khối xây dựng cho MLS/ECH/OHTTP |
+| **TLS 1.3 lai** (`crates/vpqc-tls`): cấu hình rustls + aws-lc-rs với `X25519MLKEM768`, sidecar `vpqc-tls-proxy` (server/client) và `probe` | Xong | Tương tác với **Go `crypto/tls`** (triển khai độc lập) cả hai chiều; chính sách bắt buộc lai hoặc cho phép fallback có ghi log. Chứng chỉ vẫn cổ điển (PKI PQ chưa triển khai được trên web) |
+| SSH, VPN (PSK từ KEM), KMS envelope, X.509/JOSE PQ | **Chưa** | Giai đoạn 4 còn lại |
 | `vpqc lint` (gợi ý sửa mã), chế độ song song (shadow mode), kill-switch profile | **Chưa** | `scan` đã có lời khuyên theo tầng; phần còn lại là giai đoạn 4 |
 | .NET, Swift, Kotlin (JCA), Dart | **Chưa** | Chưa có toolchain trong môi trường này để kiểm chứng; dùng chung C ABI |
 | Phát hành gói (PyPI wheel đa nền tảng, npm, thư viện C dựng sẵn cho Go) | **Chưa** | Hiện phải build từ mã nguồn. CI GitHub xanh: Rust trên Ubuntu/macOS/Windows, MSRV 1.85 cho lõi, `cargo deny`, và job bindings + interop trên Ubuntu. Các binding chưa được thử trên macOS/Windows |

@@ -10,6 +10,7 @@ members = [
     "crates/vpqc-ffi",
     "crates/vpqc-scan",
     "crates/vpqc-hpke",
+    "crates/vpqc-tls",
 ]
 
 exclude = ["bindings/python", "bindings/js"]
