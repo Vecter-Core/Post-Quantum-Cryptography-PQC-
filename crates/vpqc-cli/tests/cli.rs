@@ -444,3 +444,78 @@ fn jose_jwk_jws_jwt() {
         "aud not checked"
     );
 }
+
+#[test]
+fn encrypt_to_several_recipients() {
+    let dir = tempfile::tempdir().unwrap();
+    for (name, profile) in [
+        ("user", "standard"),
+        ("recovery", "high"),
+        ("outsider", "standard"),
+    ] {
+        ok(&[
+            "keygen",
+            "--purpose",
+            "encrypt",
+            "--profile",
+            profile,
+            "--out",
+            p(&dir.path().join(name)),
+        ]);
+    }
+    let key = |n: &str, ext: &str| dir.path().join(format!("{n}.{ext}"));
+    let input = dir.path().join("data");
+    std::fs::write(&input, vec![7u8; 100_000]).unwrap();
+    let enc = dir.path().join("data.vpqc");
+    ok(&[
+        "encrypt",
+        "--to",
+        p(&key("user", "pub")),
+        "--to",
+        p(&key("recovery", "pub")),
+        "--aad",
+        "bk",
+        "-o",
+        p(&enc),
+        p(&input),
+    ]);
+    let described = String::from_utf8(ok(&["inspect", p(&enc)]).stdout).unwrap();
+    assert!(described.contains("2 recipients"), "{described}");
+    for n in ["user", "recovery"] {
+        let out = dir.path().join(format!("out-{n}"));
+        ok(&[
+            "decrypt",
+            "--key",
+            p(&key(n, "vpqc-secret")),
+            "--aad",
+            "bk",
+            "-o",
+            p(&out),
+            p(&enc),
+        ]);
+        assert_eq!(std::fs::read(&out).unwrap(), vec![7u8; 100_000]);
+    }
+    let out = dir.path().join("out-outsider");
+    let r = vpqc(&[
+        "decrypt",
+        "--key",
+        p(&key("outsider", "vpqc-secret")),
+        "--aad",
+        "bk",
+        "-o",
+        p(&out),
+        p(&enc),
+    ]);
+    assert!(!r.status.success() && !out.exists());
+    let dup = vpqc(&[
+        "encrypt",
+        "--to",
+        p(&key("user", "pub")),
+        "--to",
+        p(&key("user", "pub")),
+        "-o",
+        p(&dir.path().join("d")),
+        p(&input),
+    ]);
+    assert!(!dup.status.success());
+}

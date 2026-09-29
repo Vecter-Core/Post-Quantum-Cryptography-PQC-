@@ -1854,6 +1854,7 @@ dependencies = [
  "chacha20poly1305",
  "libcrux-sha3",
  "serde_json",
+ "subtle",
  "tempfile",
  "vpqc-backend-libcrux",
  "vpqc-core",

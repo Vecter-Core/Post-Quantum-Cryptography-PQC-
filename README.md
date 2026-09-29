@@ -25,6 +25,7 @@ Tệp lớn (sao lưu, ảnh đĩa) dùng dạng streaming, bộ nhớ không đ
 ```sh
 vpqc encrypt --to alice.pub -o backup.tar.vpqc backup.tar
 vpqc decrypt --key alice.vpqc-secret -o backup.tar backup.tar.vpqc   # chỉ ghi tệp nếu toàn bộ hợp lệ
+vpqc encrypt --to alice.pub --to recovery.pub -o backup.tar.vpqc backup.tar   # nhiều người nhận
 ```
 
 ## Thư viện theo ngôn ngữ

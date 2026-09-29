@@ -44,6 +44,13 @@ fn gen_corpus() {
             put("parse_formats", &format!("stream-{i}-{j}"), &ct[..ct.len().min(1800)]);
         }
         put("stream", &format!("roundtrip-{i}"), &framed(1, i8, &[3], b"s", &msg));
+        put("stream", &format!("roundtrip-multi-{i}"), &framed(0x81, i8, &[3], b"s", &msg[..700]));
+        let other = &enc_keys()[(i + 1) % 4];
+        let mut e = Encryptor::to_recipients(&[&kp.public, &other.public], b"s", Vec::new(), StreamOptions { chunk_log: 10 }).unwrap();
+        e.write_all(&msg[..2100]).unwrap();
+        let multi = e.finish().unwrap();
+        put("stream", &format!("multi-{i}"), &framed(0, i8, &[2], b"s", &multi));
+        put("parse_formats", &format!("multistream-{i}"), &multi);
     }
     for (i, kp) in sig_keys().iter().enumerate() {
         let i8 = i as u8;

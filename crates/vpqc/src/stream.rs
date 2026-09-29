@@ -27,13 +27,21 @@ use std::path::{Path, PathBuf};
 
 use chacha20poly1305::aead::{Aead, KeyInit, Payload};
 use chacha20poly1305::{ChaCha20Poly1305, Nonce};
-use vpqc_core::{AeadId, AlgorithmId, Error, OsRng, PublicKey, RandomSource, SecretKey};
-use vpqc_format::{DEFAULT_CHUNK_LOG, StreamHeader};
+use subtle::ConstantTimeEq;
+use vpqc_core::{AeadId, AlgorithmId, Error, KemId, OsRng, PublicKey, RandomSource, SecretKey};
+use vpqc_format::{
+    AnyStreamHeader, DEFAULT_CHUNK_LOG, HEADER_MAC_LEN, HeaderScan, MAX_RECIPIENTS,
+    MultiStreamHeader, RecipientStanza, StreamHeader,
+};
 use zeroize::{Zeroize, Zeroizing};
 
 use crate::registry;
 
 const KDF_LABEL: &[u8] = b"vpqc-stream-v1";
+/// Multi-recipient stream labels (ADR-0009).
+const MULTI_KDF_LABEL: &[u8] = b"vpqc-multistream-v1";
+const WRAP_LABEL: &[u8] = b"vpqc-recipient-v1";
+const MAC_LABEL: &[u8] = b"vpqc-header-mac-v1";
 const TAG_LEN: usize = 16;
 
 /// Stream parameters.
@@ -65,20 +73,48 @@ pub fn crypto_error(e: &io::Error) -> Option<&Error> {
     e.get_ref().and_then(|inner| inner.downcast_ref::<Error>())
 }
 
-fn derive_key(header: &[u8], aad: &[u8], shared_secret: &[u8; 32]) -> io::Result<ChaCha20Poly1305> {
+/// `SHAKE256(label || be64(len(header)) || header || be64(len(aad)) || aad || secret)[..32]`.
+fn kdf(label: &[u8], header: &[u8], aad: &[u8], secret: &[u8]) -> Zeroizing<[u8; 32]> {
     let mut input = Zeroizing::new(Vec::with_capacity(
-        KDF_LABEL.len() + 16 + header.len() + aad.len() + 32,
+        label.len() + 16 + header.len() + aad.len() + secret.len(),
     ));
-    input.extend_from_slice(KDF_LABEL);
+    input.extend_from_slice(label);
     input.extend_from_slice(&(header.len() as u64).to_be_bytes());
     input.extend_from_slice(header);
     input.extend_from_slice(&(aad.len() as u64).to_be_bytes());
     input.extend_from_slice(aad);
-    input.extend_from_slice(shared_secret);
+    input.extend_from_slice(secret);
     let mut key = Zeroizing::new([0u8; 32]);
     libcrux_sha3::shake256_ema(&mut *key, &input);
-    ChaCha20Poly1305::new_from_slice(&*key)
-        .map_err(|_| invalid_input(Error::Backend("bad AEAD key")))
+    key
+}
+
+fn aead(key: &[u8; 32]) -> io::Result<ChaCha20Poly1305> {
+    ChaCha20Poly1305::new_from_slice(key).map_err(|_| invalid_input(Error::Backend("bad AEAD key")))
+}
+
+fn derive_key(header: &[u8], aad: &[u8], shared_secret: &[u8; 32]) -> io::Result<ChaCha20Poly1305> {
+    aead(&kdf(KDF_LABEL, header, aad, shared_secret))
+}
+
+/// Key that wraps the file key for one recipient: bound to the KEM and its ciphertext.
+fn wrap_key(
+    kem: KemId,
+    kem_ciphertext: &[u8],
+    shared_secret: &[u8; 32],
+) -> io::Result<ChaCha20Poly1305> {
+    aead(&kdf(
+        WRAP_LABEL,
+        &kem.to_u16().to_be_bytes(),
+        kem_ciphertext,
+        shared_secret,
+    ))
+}
+
+/// Header MAC keyed with the file key. It commits to the file key, so recipients who can
+/// unwrap it all agree on the same key (and therefore the same plaintext).
+fn header_mac(unauthenticated: &[u8], aad: &[u8], file_key: &[u8; 32]) -> [u8; HEADER_MAC_LEN] {
+    *kdf(MAC_LABEL, unauthenticated, aad, file_key)
 }
 
 /// `be88(counter) || last_flag`.
@@ -139,6 +175,124 @@ impl<W: Write> Encryptor<W> {
         };
         let raw = header.encode().map_err(invalid_input)?;
         let cipher = derive_key(&raw, aad, ss.expose())?;
+        inner.write_all(&raw)?;
+        let chunk = header.chunk_size();
+        Ok(Self {
+            inner,
+            cipher,
+            counter: 0,
+            chunk,
+            buf: Zeroizing::new(Vec::with_capacity(chunk)),
+        })
+    }
+
+    /// Start a stream that each of `recipients` can decrypt with their own secret key
+    /// (1 to 32 distinct keys, possibly of different profiles). Writes the header to `inner`.
+    ///
+    /// Anyone who can decrypt learns the number of recipients and their KEM algorithms, but
+    /// not their identities.
+    pub fn to_recipients(
+        recipients: &[&PublicKey],
+        aad: &[u8],
+        inner: W,
+        options: StreamOptions,
+    ) -> io::Result<Self> {
+        Self::to_recipients_with_rng(recipients, aad, inner, options, &mut OsRng)
+    }
+
+    /// [`Encryptor::to_recipients`] with an explicit randomness source (for tests).
+    #[doc(hidden)]
+    pub fn to_recipients_with_rng(
+        recipients: &[&PublicKey],
+        aad: &[u8],
+        inner: W,
+        options: StreamOptions,
+        rng: &mut dyn RandomSource,
+    ) -> io::Result<Self> {
+        if recipients.is_empty() || recipients.len() > MAX_RECIPIENTS {
+            return Err(invalid_input(Error::Format(
+                "between 1 and 32 recipients required",
+            )));
+        }
+        for (i, a) in recipients.iter().enumerate() {
+            if recipients[..i].iter().any(|b| b.as_bytes() == a.as_bytes()) {
+                return Err(invalid_input(Error::Format("duplicate recipient")));
+            }
+        }
+        let mut file_key = Zeroizing::new([0u8; 32]);
+        rng.fill(&mut *file_key).map_err(invalid_input)?;
+        let keys = vec![*file_key; recipients.len()];
+        let r = Self::build_multi(
+            recipients, &keys, &file_key, &file_key, aad, inner, options, rng,
+        );
+        keys.into_iter().for_each(|mut k| k.zeroize());
+        r
+    }
+
+    /// Test hook: a *malicious* header in which recipient `i` unwraps `wrapped[i]`, the MAC is
+    /// keyed with `mac_key` and the payload with `payload_key`. Honest encryption uses one
+    /// file key for all three; tests use this to show that decryptors reject the rest.
+    #[doc(hidden)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn to_recipients_forged_for_testing(
+        recipients: &[&PublicKey],
+        wrapped: &[[u8; 32]],
+        mac_key: &[u8; 32],
+        payload_key: &[u8; 32],
+        aad: &[u8],
+        inner: W,
+        options: StreamOptions,
+    ) -> io::Result<Self> {
+        Self::build_multi(
+            recipients,
+            wrapped,
+            mac_key,
+            payload_key,
+            aad,
+            inner,
+            options,
+            &mut OsRng,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn build_multi(
+        recipients: &[&PublicKey],
+        wrapped_keys: &[[u8; 32]],
+        mac_key: &[u8; 32],
+        payload_key: &[u8; 32],
+        aad: &[u8],
+        mut inner: W,
+        options: StreamOptions,
+        rng: &mut dyn RandomSource,
+    ) -> io::Result<Self> {
+        let mut stanzas = Vec::with_capacity(recipients.len());
+        for (recipient, file_key) in recipients.iter().zip(wrapped_keys) {
+            let AlgorithmId::Kem(kem) = recipient.algorithm() else {
+                return Err(invalid_input(Error::AlgorithmMismatch));
+            };
+            let (kem_ciphertext, ss) = registry::kem(kem)
+                .and_then(|k| k.encapsulate(recipient, rng))
+                .map_err(invalid_input)?;
+            let wrapped = wrap_key(kem, &kem_ciphertext, ss.expose())?
+                .encrypt(&Nonce::default(), &file_key[..])
+                .map_err(|_| invalid_input(Error::Backend("AEAD encryption failed")))?;
+            stanzas.push(RecipientStanza {
+                kem,
+                kem_ciphertext,
+                wrapped_key: wrapped.try_into().expect("32-byte key + 16-byte tag"),
+            });
+        }
+        let mut header = MultiStreamHeader {
+            aead: AeadId::ChaCha20Poly1305,
+            chunk_log: options.chunk_log,
+            recipients: stanzas,
+            mac: [0; HEADER_MAC_LEN],
+        };
+        let unauthenticated = header.encode_unauthenticated().map_err(invalid_input)?;
+        header.mac = header_mac(&unauthenticated, aad, mac_key);
+        let raw = header.encode().map_err(invalid_input)?;
+        let cipher = aead(&kdf(MULTI_KDF_LABEL, &raw, aad, payload_key))?;
         inner.write_all(&raw)?;
         let chunk = header.chunk_size();
         Ok(Self {
@@ -226,17 +380,26 @@ impl ChunkOpener {
     fn start(
         secret: &SecretKey,
         aad: &[u8],
-        header: &StreamHeader,
+        header: &AnyStreamHeader,
         raw: &[u8],
     ) -> io::Result<Self> {
-        if secret.algorithm() != AlgorithmId::Kem(header.kem) {
-            return Err(invalid_input(Error::AlgorithmMismatch));
-        }
-        let ss = registry::kem(header.kem)
-            .and_then(|k| k.decapsulate(secret, &header.kem_ciphertext))
-            .map_err(|_| decryption_failed())?;
+        let cipher = match header {
+            AnyStreamHeader::Single(h) => {
+                if secret.algorithm() != AlgorithmId::Kem(h.kem) {
+                    return Err(invalid_input(Error::AlgorithmMismatch));
+                }
+                let ss = registry::kem(h.kem)
+                    .and_then(|k| k.decapsulate(secret, &h.kem_ciphertext))
+                    .map_err(|_| decryption_failed())?;
+                derive_key(raw, aad, ss.expose())?
+            }
+            AnyStreamHeader::Multi(h) => {
+                let file_key = unwrap_file_key(secret, aad, h, raw)?;
+                aead(&kdf(MULTI_KDF_LABEL, raw, aad, &*file_key))?
+            }
+        };
         Ok(Self {
-            cipher: derive_key(raw, aad, ss.expose())?,
+            cipher,
             counter: 0,
             chunk_ct: header.chunk_size() + TAG_LEN,
         })
@@ -257,6 +420,42 @@ impl ChunkOpener {
         self.counter = self.counter.checked_add(1).ok_or_else(decryption_failed)?;
         Ok(pt)
     }
+}
+
+/// Find the stanza for `secret` and recover the file key; then check the header MAC.
+fn unwrap_file_key(
+    secret: &SecretKey,
+    aad: &[u8],
+    header: &MultiStreamHeader,
+    raw: &[u8],
+) -> io::Result<Zeroizing<[u8; 32]>> {
+    let AlgorithmId::Kem(kem) = secret.algorithm() else {
+        return Err(invalid_input(Error::AlgorithmMismatch));
+    };
+    let unauthenticated = &raw[..raw.len() - HEADER_MAC_LEN];
+    // Stanzas carry no recipient identifier: try each one of our KEM.
+    for stanza in header.recipients.iter().filter(|s| s.kem == kem) {
+        let Ok(ss) = registry::kem(kem).and_then(|k| k.decapsulate(secret, &stanza.kem_ciphertext))
+        else {
+            continue;
+        };
+        let Ok(opened) = wrap_key(kem, &stanza.kem_ciphertext, ss.expose())?
+            .decrypt(&Nonce::default(), &stanza.wrapped_key[..])
+        else {
+            continue;
+        };
+        let opened = Zeroizing::new(opened);
+        let mut file_key = Zeroizing::new([0u8; 32]);
+        file_key.copy_from_slice(&opened);
+        // A stanza that unwraps but fails the MAC means a malformed or malicious header (for
+        // example different file keys for different recipients): reject, do not keep trying.
+        let expected = header_mac(unauthenticated, aad, &file_key);
+        if !bool::from(expected.ct_eq(&header.mac)) {
+            return Err(decryption_failed());
+        }
+        return Ok(file_key);
+    }
+    Err(decryption_failed())
 }
 
 #[derive(PartialEq, Eq)]
@@ -282,7 +481,7 @@ impl<R: Read> Decryptor<R> {
     /// Read the header and prepare to decrypt. Fails for a key of the wrong algorithm, a
     /// malformed header or a failed decapsulation.
     pub fn new(secret: &SecretKey, aad: &[u8], mut inner: R) -> io::Result<Self> {
-        let (header, raw) = StreamHeader::read_from(&mut inner)?;
+        let (header, raw) = AnyStreamHeader::read_from(&mut inner)?;
         let opener = ChunkOpener::start(secret, aad, &header, &raw)?;
         let chunk_ct = opener.chunk_ct;
         Ok(Self {
@@ -407,18 +606,17 @@ impl PushDecryptor {
         }
         self.buf.extend_from_slice(data);
         if self.opener.is_none() {
-            // Header: 12 fixed bytes, then the KEM ciphertext whose length is in bytes 10..12.
-            if self.buf.len() < 12 {
-                return Ok(Vec::new());
-            }
-            let header_len = 12 + u16::from_be_bytes([self.buf[10], self.buf[11]]) as usize;
-            if self.buf.len() < header_len {
-                return Ok(Vec::new());
-            }
-            let mut cursor = &self.buf[..header_len];
-            let started = StreamHeader::read_from(&mut cursor).and_then(|(header, raw)| {
-                ChunkOpener::start(&self.secret, &self.aad, &header, &raw)
-            });
+            let header_len = match AnyStreamHeader::scan(&self.buf) {
+                Ok(HeaderScan::Complete(n)) => n,
+                Ok(HeaderScan::NeedAtLeast(_)) => return Ok(Vec::new()),
+                Err(e) => {
+                    return Err(self.fail(io::Error::new(io::ErrorKind::InvalidData, e)));
+                }
+            };
+            let raw = &self.buf[..header_len];
+            let started = AnyStreamHeader::parse(raw)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+                .and_then(|header| ChunkOpener::start(&self.secret, &self.aad, &header, raw));
             match started {
                 Ok(o) => self.opener = Some(o),
                 Err(e) => return Err(self.fail(e)),
@@ -463,6 +661,19 @@ pub fn seal_stream<R: Read, W: Write>(
     output: W,
 ) -> io::Result<u64> {
     let mut enc = Encryptor::new(recipient, aad, output)?;
+    let n = io::copy(&mut input, &mut enc)?;
+    enc.finish()?.flush()?;
+    Ok(n)
+}
+
+/// [`seal_stream`] for several recipients (see [`Encryptor::to_recipients`]).
+pub fn seal_stream_multi<R: Read, W: Write>(
+    recipients: &[&PublicKey],
+    aad: &[u8],
+    mut input: R,
+    output: W,
+) -> io::Result<u64> {
+    let mut enc = Encryptor::to_recipients(recipients, aad, output, StreamOptions::default())?;
     let n = io::copy(&mut input, &mut enc)?;
     enc.finish()?.flush()?;
     Ok(n)
@@ -548,6 +759,36 @@ pub fn encrypt_to_file<R: Read>(
     let n = seal_stream(recipient, aad, input, sink)?;
     tmp.commit()?;
     Ok(n)
+}
+
+/// [`encrypt_to_file`] for several recipients.
+pub fn encrypt_to_file_multi<R: Read>(
+    recipients: &[&PublicKey],
+    aad: &[u8],
+    input: R,
+    output: &Path,
+) -> io::Result<u64> {
+    let tmp = TempOutput::create(output)?;
+    let sink = io::BufWriter::with_capacity(1 << 16, tmp.file.as_ref().expect("open"));
+    let n = seal_stream_multi(recipients, aad, input, sink)?;
+    tmp.commit()?;
+    Ok(n)
+}
+
+/// [`encrypt_file`] for several recipients: any of them can decrypt with
+/// [`decrypt_file`].
+pub fn encrypt_file_multi(
+    recipients: &[&PublicKey],
+    aad: &[u8],
+    input: &Path,
+    output: &Path,
+) -> io::Result<u64> {
+    encrypt_to_file_multi(
+        recipients,
+        aad,
+        io::BufReader::with_capacity(1 << 16, fs::File::open(input)?),
+        output,
+    )
 }
 
 /// Decrypt everything from `input` into the file `output`. The file appears (atomically,

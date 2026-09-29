@@ -30,6 +30,9 @@ cli() { # cli keygen|seal|open|sign|verify ...
     sign)   "$VPQC_CLI" sign --key "$1" --context "$2" -o "$4" "$3" ;;
     verify) "$VPQC_CLI" verify --key "$1" --context "$2" --sig "$3" "$4" 2>/dev/null ;;
     encrypt-file) "$VPQC_CLI" encrypt --to "$1" --aad "$2" -o "$4" --force "$3" ;;
+    encrypt-file-multi) local aad="$1" in="$2" out="$3"; shift 3
+            local to=(); for k in "$@"; do to+=(--to "$k"); done
+            "$VPQC_CLI" encrypt "${to[@]}" --aad "$aad" -o "$out" --force "$in" ;;
     decrypt-file) "$VPQC_CLI" decrypt --key "$1" --aad "$2" -o "$4" --force "$3" ;;
   esac
 }
@@ -135,6 +138,43 @@ for d in "${STREAM_IMPLS[@]}"; do
   cmp -s "$WORK/vec.out" "$WORK/vec.pt" || { echo "FAIL: $d regression vector plaintext differs"; fail=$((fail+1)); }
 done
 echo "streaming: done"
+
+# Multi-recipient streams (ADR-0009): the CLI, Python and Go encrypt to three recipients of
+# different profiles; every implementation decrypts with each recipient key and rejects an
+# outsider (implementations without a multi-recipient encrypt API still decrypt: the format
+# is handled by the shared decryptor).
+for p in standard high cnsa2; do run cli keygen encrypt "$p" "$WORK/mr-$p"; done
+run cli keygen encrypt standard "$WORK/mr-out"
+for e in cli py go; do
+  rm -f "$WORK/mr.vpqc"
+  expect_ok run "$e" encrypt-file-multi "team" "$WORK/big.bin" "$WORK/mr.vpqc" \
+    "$WORK/mr-standard.pub" "$WORK/mr-high.pub" "$WORK/mr-cnsa2.pub"
+  for d in "${STREAM_IMPLS[@]}"; do
+    for p in standard high cnsa2; do
+      rm -f "$WORK/mr.out"
+      expect_ok run "$d" decrypt-file "$WORK/mr-$p.sec" "team" "$WORK/mr.vpqc" "$WORK/mr.out"
+      cmp -s "$WORK/mr.out" "$WORK/big.bin" || { echo "FAIL: multi-recipient plaintext differs ($e -> $d, $p)"; fail=$((fail+1)); }
+    done
+    expect_fail run "$d" decrypt-file "$WORK/mr-out.sec" "team" "$WORK/mr.vpqc" "$WORK/mr.bad"
+  done
+done
+"$PYTHON" - "$ROOT/crates/vpqc/tests/data/multistream-v1.json" "$WORK" <<'PY'
+import json, sys, base64
+v = json.load(open(sys.argv[1])); w = sys.argv[2]
+open(f"{w}/mvec.vpqc", "wb").write(bytes.fromhex(v["ciphertext"]))
+open(f"{w}/mvec.pt", "wb").write(bytes((i * 31) % 251 for i in range(v["plaintext_len"])))
+for i, sk in enumerate(v["secret_keys"]):
+    b64 = base64.b64encode(bytes.fromhex(sk)).decode()
+    open(f"{w}/mvec{i}.sec", "w").write("-----BEGIN VPQC SECRET KEY-----\n" + "\n".join(b64[j:j+64] for j in range(0, len(b64), 64)) + "\n-----END VPQC SECRET KEY-----\n")
+PY
+for d in "${STREAM_IMPLS[@]}"; do
+  for i in 0 1; do
+    rm -f "$WORK/mvec.out"
+    expect_ok run "$d" decrypt-file "$WORK/mvec$i.sec" "vector" "$WORK/mvec.vpqc" "$WORK/mvec.out"
+    cmp -s "$WORK/mvec.out" "$WORK/mvec.pt" || { echo "FAIL: $d multi-recipient vector differs"; fail=$((fail+1)); }
+  done
+done
+echo "multi-recipient streaming: done"
 
 # Tampered data is rejected everywhere.
 cp "$WORK/signature" "$WORK/bad.sig"; printf '\x00' | dd of="$WORK/bad.sig" bs=1 seek=100 conv=notrunc 2>/dev/null

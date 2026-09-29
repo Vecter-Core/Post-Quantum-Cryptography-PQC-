@@ -3,7 +3,7 @@
 #![no_main]
 use libfuzzer_sys::fuzz_target;
 use vpqc_format::{
-    DetachedSignature, Sealed, StreamHeader, armor, dearmor, decode_public_key, decode_secret_key,
+    AnyStreamHeader, DetachedSignature, HeaderScan, Sealed, StreamHeader, armor, dearmor, decode_public_key, decode_secret_key,
     encode_public_key, encode_secret_key,
 };
 
@@ -23,6 +23,17 @@ fuzz_target!(|data: &[u8]| {
     if let Ok(h) = StreamHeader::decode_prefix(data) {
         let enc = h.encode().unwrap();
         assert_eq!(&data[..enc.len()], &enc[..]);
+    }
+    // Both stream header kinds: the scanner's length, the parser and the encoder agree.
+    if let Ok(HeaderScan::Complete(n)) = AnyStreamHeader::scan(data) {
+        if let Ok(h) = AnyStreamHeader::parse(&data[..n]) {
+            let enc = match &h {
+                AnyStreamHeader::Single(s) => s.encode().unwrap(),
+                AnyStreamHeader::Multi(m) => m.encode().unwrap(),
+            };
+            assert_eq!(&enc[..], &data[..n]);
+            assert_eq!(AnyStreamHeader::decode_prefix(data).unwrap(), h);
+        }
     }
     if let Ok(text) = std::str::from_utf8(data) {
         for label in ["VPQC PUBLIC KEY", "VPQC SECRET KEY"] {

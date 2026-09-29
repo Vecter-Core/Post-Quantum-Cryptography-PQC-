@@ -247,6 +247,32 @@ func EncryptFile(pk PublicKey, inPath, outPath string, aad []byte) (uint64, erro
 	return uint64(n), err
 }
 
+// EncryptFileMulti is EncryptFile for several recipients (1 to 32, e.g. a user key and a
+// recovery key): each can decrypt with DecryptFile and their own secret key.
+func EncryptFileMulti(recipients []PublicKey, inPath, outPath string, aad []byte) (uint64, error) {
+	if len(recipients) == 0 || len(recipients) > 32 {
+		return 0, fmt.Errorf("%w: between 1 and 32 recipients required", ErrInvalidInput)
+	}
+	// cgo forbids passing Go memory that holds Go pointers: build the arrays in C memory.
+	count := len(recipients)
+	ptrSize := C.size_t(unsafe.Sizeof(uintptr(0)))
+	keys := (*[32]*C.uint8_t)(C.malloc(C.size_t(count) * ptrSize))
+	lens := (*[32]C.size_t)(C.malloc(C.size_t(count) * C.size_t(unsafe.Sizeof(C.size_t(0)))))
+	defer C.free(unsafe.Pointer(keys))
+	defer C.free(unsafe.Pointer(lens))
+	for i, pk := range recipients {
+		keys[i] = (*C.uint8_t)(C.CBytes(pk.b))
+		lens[i] = C.size_t(len(pk.b))
+		defer C.free(unsafe.Pointer(keys[i]))
+	}
+	in, out := C.CString(inPath), C.CString(outPath)
+	defer C.free(unsafe.Pointer(in))
+	defer C.free(unsafe.Pointer(out))
+	var n C.uint64_t
+	err := check(C.vpqc_encrypt_file_multi(&keys[0], &lens[0], C.size_t(count), ptr(aad), C.size_t(len(aad)), in, out, &n))
+	return uint64(n), err
+}
+
 // DecryptFile decrypts a file produced by EncryptFile. The output file appears (mode 0600 on
 // Unix) only if the whole stream verifies; errors.Is(err, ErrDecryption) otherwise.
 func DecryptFile(sk SecretKey, inPath, outPath string, aad []byte) (uint64, error) {

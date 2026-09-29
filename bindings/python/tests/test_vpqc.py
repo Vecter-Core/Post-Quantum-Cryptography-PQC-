@@ -172,3 +172,28 @@ def test_incremental_stream_objects(tmp_path):
         dec.finalize()
     with pytest.raises(vpqc.VpqcError):
         enc.update(b"after finalize")
+
+
+def test_multiple_recipients(tmp_path):
+    user = vpqc.generate_encryption_keypair()
+    recovery = vpqc.generate_encryption_keypair("high")
+    outsider = vpqc.generate_encryption_keypair()
+    data = bytes(range(256)) * 1000
+    src, enc = tmp_path / "in", tmp_path / "in.vpqc"
+    src.write_bytes(data)
+    assert vpqc.encrypt_file([user.public, recovery.public], src, enc, aad=b"b") == len(data)
+    for i, k in enumerate([user, recovery]):
+        vpqc.decrypt_file(k.secret, enc, tmp_path / f"out{i}", aad=b"b")
+        assert (tmp_path / f"out{i}").read_bytes() == data
+    with pytest.raises(vpqc.DecryptionError):
+        vpqc.decrypt_file(outsider.secret, enc, tmp_path / "x", aad=b"b")
+    # Incremental, and readable by the incremental decryptor of either recipient.
+    s = vpqc.StreamEncryptor((user.public, recovery.public), aad=b"s")
+    ct = s.update(data) + s.finalize()
+    for k in (user, recovery):
+        d = vpqc.StreamDecryptor(k.secret, aad=b"s")
+        assert b"".join(d.update(ct[i:i + 777]) for i in range(0, len(ct), 777)) + d.finalize() == data
+    with pytest.raises(TypeError):
+        vpqc.encrypt_file([], src, enc)
+    with pytest.raises(vpqc.VpqcError):
+        vpqc.encrypt_file([user.public, user.public], src, tmp_path / "dup")

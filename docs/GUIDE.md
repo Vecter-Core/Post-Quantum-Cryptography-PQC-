@@ -119,6 +119,21 @@ Go `EncryptFile/DecryptFile`, Java `Vpqc.encryptFile/decryptFile`, PHP `Vpqc::en
 Ruby `Vpqc.encrypt_file`, C `vpqc_encrypt_file`, JS/trình duyệt `new StreamEncryptor(...)` /
 `new StreamDecryptor(...)` (dùng với `file.stream()`).
 
+**Nhiều người nhận** (ADR-0009): lặp lại `--to` (tối đa 32), ví dụ khoá của người dùng và một
+khoá khôi phục cất ngoại tuyến. Mỗi người mở bằng khoá bí mật của chính mình; profile có thể khác nhau.
+
+```sh
+vpqc encrypt --to alice.pub --to recovery.pub --aad backup/2026-09 -o db.vpqc db.dump
+```
+
+```python
+vpqc.encrypt_file([alice.public, recovery.public], "db.dump", "db.vpqc", aad=b"backup/2026-09")
+```
+
+Go: `EncryptFileMulti`, C: `vpqc_encrypt_file_multi`. Mọi thư viện đều **giải mã** được tệp
+nhiều người nhận mà không cần đổi code. Người nhận không chứng minh được ai đã tạo tệp: nếu
+nguồn gốc quan trọng, hãy ký tệp.
+
 **Quy tắc quan trọng:** khi giải mã ra **tệp**, tệp đích chỉ xuất hiện nếu toàn bộ luồng hợp
 lệ. Khi giải mã theo kiểu luồng (stdout, `StreamDecryptor`, `Decryptor`), các phần bản rõ được
 trả dần; nếu cuối cùng báo lỗi (ví dụ tệp bị cắt cụt) thì **phải bỏ toàn bộ dữ liệu đã nhận**.

@@ -88,10 +88,12 @@ enum Command {
         force: bool,
     },
     /// Encrypt a file or stream of any size (constant memory). Recommended for files.
+    /// Repeat --to for several recipients (up to 32, e.g. a user key and a recovery key):
+    /// each can decrypt with their own secret key.
     Encrypt {
-        /// Recipient public key file.
-        #[arg(long)]
-        to: PathBuf,
+        /// Recipient public key file (repeatable).
+        #[arg(long, required = true)]
+        to: Vec<PathBuf>,
         /// Authenticated context; must be given again to decrypt.
         #[arg(long, default_value = "")]
         aad: String,
@@ -353,16 +355,35 @@ fn run(cli: Cli) -> CliResult {
             force,
             input,
         } => {
-            let pk =
-                keys::public_from_bytes(&read_key_bytes(&to, "VPQC PUBLIC KEY")?).map_err(err)?;
-            run_stream(
-                true,
-                &input,
-                &output,
-                force,
-                |r, w| vpqc::stream::seal_stream(&pk, aad.as_bytes(), r, w),
-                |r, o| vpqc::stream::encrypt_to_file(&pk, aad.as_bytes(), r, o),
-            )
+            let pks = to
+                .iter()
+                .map(|p| {
+                    keys::public_from_bytes(&read_key_bytes(p, "VPQC PUBLIC KEY")?)
+                        .map_err(|e| format!("{}: {e}", p.display()))
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            let refs: Vec<_> = pks.iter().collect();
+            let aad = aad.as_bytes();
+            if let [pk] = refs[..] {
+                // One recipient: the single-recipient format (ADR-0007).
+                run_stream(
+                    true,
+                    &input,
+                    &output,
+                    force,
+                    |r, w| vpqc::stream::seal_stream(pk, aad, r, w),
+                    |r, o| vpqc::stream::encrypt_to_file(pk, aad, r, o),
+                )
+            } else {
+                run_stream(
+                    true,
+                    &input,
+                    &output,
+                    force,
+                    |r, w| vpqc::stream::seal_stream_multi(&refs, aad, r, w),
+                    |r, o| vpqc::stream::encrypt_to_file_multi(&refs, aad, r, o),
+                )
+            }
         }
         Command::Decrypt {
             key,
@@ -545,15 +566,40 @@ fn inspect(path: &Path) -> CliResult {
     fs::File::open(path)
         .and_then(|f| f.take(1 << 16).read_to_end(&mut prefix))
         .map_err(|e| format!("{}: {e}", path.display()))?;
-    if let Ok(h) = vpqc_format::StreamHeader::decode_prefix(&prefix) {
-        let header_len = 12 + h.kem_ciphertext.len() as u64;
+    if let Ok(h) = vpqc_format::AnyStreamHeader::decode_prefix(&prefix) {
+        let (header_len, kems) = match &h {
+            vpqc_format::AnyStreamHeader::Single(s) => {
+                (12 + s.kem_ciphertext.len() as u64, vec![s.kem])
+            }
+            vpqc_format::AnyStreamHeader::Multi(m) => (
+                m.encode().map(|e| e.len() as u64).unwrap_or(0),
+                m.recipients.iter().map(|r| r.kem).collect(),
+            ),
+        };
         let cs = h.chunk_size() as u64;
         let body = size.saturating_sub(header_len);
         let chunks = body.div_ceil(cs + 16).max(1);
+        if let [kem] = kems[..] {
+            println!(
+                "stream     : KEM {}, AEAD ChaCha20-Poly1305, {} KiB chunks",
+                describe_alg(AlgorithmId::Kem(kem)),
+                cs / 1024
+            );
+        } else {
+            println!(
+                "stream     : {} recipients, AEAD ChaCha20-Poly1305, {} KiB chunks",
+                kems.len(),
+                cs / 1024
+            );
+            for (i, kem) in kems.iter().enumerate() {
+                println!(
+                    "recipient {i:<2}: KEM {}",
+                    describe_alg(AlgorithmId::Kem(*kem))
+                );
+            }
+        }
         println!(
-            "stream     : KEM {}, AEAD ChaCha20-Poly1305, {} KiB chunks\nsize       : {size} bytes, about {} bytes of plaintext in {chunks} chunk(s)",
-            describe_alg(AlgorithmId::Kem(h.kem)),
-            cs / 1024,
+            "size       : {size} bytes, about {} bytes of plaintext in {chunks} chunk(s)",
             body.saturating_sub(16 * chunks),
         );
         return Ok(());
