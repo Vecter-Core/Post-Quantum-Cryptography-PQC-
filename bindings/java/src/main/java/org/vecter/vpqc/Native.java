@@ -186,6 +186,43 @@ final class Native {
         }
     }
 
+    private static final FunctionDescriptor DESC_KEM_ENCAP = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS, ValueLayout.ADDRESS);
+
+    private static final FunctionDescriptor DESC_KEM_DECAP = FunctionDescriptor.of(
+            ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.JAVA_LONG,
+            ValueLayout.ADDRESS, ValueLayout.JAVA_LONG, ValueLayout.ADDRESS);
+
+    /** Raw KEM encapsulation: returns {shared secret (32 bytes), ciphertext}. */
+    static byte[][] kemEncapsulate(byte[] publicKey) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment ss = arena.allocate(32);
+            MemorySegment out = arena.allocate(BUF);
+            out.fill((byte) 0);
+            check(invoke(handle("vpqc_kem_encapsulate", DESC_KEM_ENCAP),
+                    copyIn(arena, publicKey), (long) publicKey.length, ss, out));
+            byte[] secret = ss.toArray(ValueLayout.JAVA_BYTE);
+            ss.fill((byte) 0);
+            return new byte[][] {secret, take(out)};
+        }
+    }
+
+    /** Raw KEM decapsulation: returns the 32-byte shared secret. */
+    static byte[] kemDecapsulate(byte[] secretKey, byte[] ciphertext) {
+        try (Arena arena = Arena.ofConfined()) {
+            MemorySegment ss = arena.allocate(32);
+            MemorySegment sk = copyIn(arena, secretKey);
+            check(invoke(handle("vpqc_kem_decapsulate", DESC_KEM_DECAP),
+                    sk, (long) secretKey.length,
+                    copyIn(arena, ciphertext), (long) ciphertext.length, ss));
+            byte[] secret = ss.toArray(ValueLayout.JAVA_BYTE);
+            ss.fill((byte) 0);
+            sk.fill((byte) 0);
+            return secret;
+        }
+    }
+
     static String keyToText(int kind, byte[] key) {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment out = arena.allocate(BUF);

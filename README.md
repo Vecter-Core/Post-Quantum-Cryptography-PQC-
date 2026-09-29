@@ -48,3 +48,18 @@ vpqc scan ./my-project --fail-on quantum-vulnerable # thoát mã 2 nếu còn th
 Chứng chỉ X.509 và tệp khoá được phân tích chính xác; mã nguồn/cấu hình được quét theo mẫu
 (chỉ tìm *lần nhắc tên*, không chứng minh việc sử dụng), nên có thể có dương tính giả. Khoá
 không bao giờ được in ra.
+
+## TLS lai và HPKE
+
+```sh
+# Đặt TLS lai (X25519MLKEM768) trước một dịch vụ không sửa được
+vpqc-tls-proxy server --listen 0.0.0.0:8443 --backend 127.0.0.1:8080 --cert cert.pem --key key.pem
+# Nâng cấp một client cũ: plaintext cục bộ -> TLS lai ra ngoài
+vpqc-tls-proxy client --listen 127.0.0.1:9000 --connect api.example.com:443 --server-name api.example.com --ca ca.pem
+# Kiểm tra máy chủ có dùng trao đổi khoá hậu lượng tử không (mã thoát 2 nếu không)
+vpqc-tls-proxy probe example.com:443 --require-pq
+```
+
+Mặc định proxy **chỉ chấp nhận nhóm lai**; thêm `--allow-classical` để cho client cũ dùng
+X25519 (mỗi kết nối cổ điển được ghi log). HPKE cho giao thức cần nó (MLS, ECH, OHTTP) có ở
+`vpqc::hpke`.

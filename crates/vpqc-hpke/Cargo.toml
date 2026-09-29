@@ -1,24 +1,25 @@
 [package]
-name = "vpqc"
-description = "Easy-to-use post-quantum cryptography (hybrid ML-KEM/X25519, ML-DSA) with safe defaults"
+name = "vpqc-hpke"
+description = "HPKE (RFC 9180 / draft-ietf-hpke-hpke) with post-quantum and hybrid KEMs (draft-ietf-hpke-pq)"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-readme = "README.md"
-keywords = ["post-quantum", "pqc", "ml-kem", "ml-dsa", "hybrid"]
-categories = ["cryptography"]
 
 [dependencies]
 vpqc-core.workspace = true
 vpqc-backend-libcrux.workspace = true
 vpqc-hybrid.workspace = true
-vpqc-format.workspace = true
-vpqc-hpke.workspace = true
+aes-gcm.workspace = true
 chacha20poly1305.workspace = true
+hkdf.workspace = true
+sha2.workspace = true
 libcrux-sha3.workspace = true
 zeroize.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [lints]
 workspace = true

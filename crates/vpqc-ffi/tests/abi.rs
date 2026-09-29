@@ -338,3 +338,50 @@ fn key_text_round_trip_and_errors() {
         VPQC_ERR_FORMAT
     );
 }
+
+#[test]
+fn raw_kem_round_trip_and_errors() {
+    for profile in 1..=4 {
+        let (pk, sk) = keygen(vpqc_encryption_keygen, profile);
+        let mut ss1 = [0u8; 32];
+        let mut ct = empty();
+        assert_eq!(
+            unsafe { vpqc_kem_encapsulate(pk.as_ptr(), pk.len(), ss1.as_mut_ptr(), &mut ct) },
+            VPQC_OK
+        );
+        let c = bytes(&ct);
+        unsafe { vpqc_buf_free(&mut ct) };
+        let mut ss2 = [0u8; 32];
+        assert_eq!(
+            unsafe {
+                vpqc_kem_decapsulate(sk.as_ptr(), sk.len(), c.as_ptr(), c.len(), ss2.as_mut_ptr())
+            },
+            VPQC_OK
+        );
+        assert_eq!(ss1, ss2, "profile {profile}");
+        assert_ne!(ss1, [0u8; 32]);
+    }
+    let (spk, ssk) = keygen(vpqc_signing_keygen, 1);
+    let mut ss = [0u8; 32];
+    let mut ct = empty();
+    assert_eq!(
+        unsafe { vpqc_kem_encapsulate(spk.as_ptr(), spk.len(), ss.as_mut_ptr(), &mut ct) },
+        VPQC_ERR_ALGORITHM_MISMATCH
+    );
+    assert_eq!(
+        unsafe {
+            vpqc_kem_decapsulate(
+                ssk.as_ptr(),
+                ssk.len(),
+                [0u8; 4].as_ptr(),
+                4,
+                ss.as_mut_ptr(),
+            )
+        },
+        VPQC_ERR_ALGORITHM_MISMATCH
+    );
+    assert_eq!(
+        unsafe { vpqc_kem_encapsulate(spk.as_ptr(), spk.len(), std::ptr::null_mut(), &mut ct) },
+        VPQC_ERR_INVALID_ARGUMENT
+    );
+}

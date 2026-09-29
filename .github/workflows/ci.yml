@@ -87,7 +87,7 @@ jobs:
           tool: wasm-bindgen-cli@0.2.129
 
       # Native artifacts
-      - run: cargo build --release -p vpqc-cli -p vpqc-ffi
+      - run: cargo build --release -p vpqc-cli -p vpqc-ffi -p vpqc-tls
 
       # C / C++ (ASan/UBSan on the smoke test)
       - run: sh crates/vpqc-ffi/tests/c/run.sh
@@ -129,6 +129,9 @@ jobs:
           done
           ./target/release/vpqc scan crates/vpqc-scan/tests/fixtures --format cbom -o /tmp/cbom.json
           python scripts/validate-cbom.py /tmp/cbom.json /tmp/cdx
+
+      # Hybrid TLS against an independent stack (Go crypto/tls, X25519MLKEM768 only)
+      - run: ./interop/tls.sh
 
       # Cross-language interoperability matrix (all implementations)
       - run: |
