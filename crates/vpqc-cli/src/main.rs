@@ -1,5 +1,6 @@
 //! `vpqc` command-line tool.
 
+mod cose;
 mod jose;
 mod ssh;
 mod x509;
@@ -249,6 +250,16 @@ enum Command {
     Jwt {
         #[command(subcommand)]
         command: jose::JwtCommand,
+    },
+    /// COSE_Sign1 with ML-DSA (binary counterpart of JWS, for IoT and attestation).
+    Cose {
+        #[command(subcommand)]
+        command: cose::CoseCommand,
+    },
+    /// CBOR Web Tokens signed with ML-DSA.
+    Cwt {
+        #[command(subcommand)]
+        command: cose::CwtCommand,
     },
     /// SSH: check whether a server offers a post-quantum key exchange.
     Ssh {
@@ -555,6 +566,8 @@ fn run(cli: Cli) -> CliResult {
         Command::Jwt { command } => jose::jwt(command),
         Command::X509 { command } => x509::run(command),
         Command::Ssh { command } => ssh::run(command),
+        Command::Cose { command } => cose::cose(command),
+        Command::Cwt { command } => cose::cwt(command),
     }
 }
 

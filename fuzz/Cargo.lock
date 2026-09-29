@@ -1436,6 +1436,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "vpqc-cose"
+version = "0.0.1"
+dependencies = [
+ "getrandom",
+ "vpqc-backend-libcrux",
+ "zeroize",
+]
+
+[[package]]
 name = "vpqc-format"
 version = "0.0.1"
 dependencies = [
@@ -1452,6 +1461,7 @@ dependencies = [
  "serde_json",
  "vpqc",
  "vpqc-core",
+ "vpqc-cose",
  "vpqc-format",
  "vpqc-hpke",
  "vpqc-jose",

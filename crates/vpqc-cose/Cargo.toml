@@ -1,0 +1,20 @@
+[package]
+name = "vpqc-cose"
+description = "Post-quantum COSE and CWT: COSE_Sign1 with ML-DSA and AKP COSE_Keys (draft-ietf-cose-dilithium)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vpqc-backend-libcrux.workspace = true
+getrandom.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+# An independent COSE implementation (Google), used to cross-check encodings in tests.
+coset = "0.4"
+
+[lints]
+workspace = true

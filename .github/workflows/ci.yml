@@ -1,9 +1,22 @@
 name: CI
 
+# Minutes matter (private repository: macOS counts 10x, Windows 2x). Every commit runs once:
+# pull requests cover branches, pushes cover main. Documentation-only changes skip CI, a newer
+# commit cancels the older run, and macOS/Windows run on main, weekly and on demand, not per
+# pull request commit.
 on:
   push:
-    branches: [main, "claude/**"]
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**", "LICENSE*"]
   pull_request:
+    paths-ignore: ["**.md", "docs/**", "LICENSE*"]
+  schedule:
+    - cron: "17 3 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,7 +29,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        # On pull requests only Linux; see the note at the top.
+        os: ${{ fromJSON(github.event_name == 'pull_request' && '["ubuntu-latest"]' || '["ubuntu-latest", "macos-latest", "windows-latest"]') }}
         toolchain: [stable]
         include:
           - os: ubuntu-latest
@@ -36,7 +50,7 @@ jobs:
         if: matrix.toolchain == 'stable'
       # MSRV: the library crates must keep building on the oldest supported compiler.
       # (vpqc-scan and vpqc-cli need 1.88 because of patched dependencies.)
-      - run: cargo build -p vpqc-core -p vpqc-backend-libcrux -p vpqc-hybrid -p vpqc-format -p vpqc -p vpqc-ffi -p vpqc-jose -p vpqc-ssh
+      - run: cargo build -p vpqc-core -p vpqc-backend-libcrux -p vpqc-hybrid -p vpqc-format -p vpqc -p vpqc-ffi -p vpqc-jose -p vpqc-cose -p vpqc-ssh
         if: matrix.toolchain != 'stable'
 
   fuzz:
@@ -55,7 +69,7 @@ jobs:
       - name: Run each target for 60 seconds from the seed corpus
         working-directory: fuzz
         run: |
-          for t in parse_formats sealed_box stream signatures hpke scan jose x509 ssh; do
+          for t in parse_formats sealed_box stream signatures hpke scan jose x509 ssh cose; do
             mkdir -p corpus/$t
             # +nightly: rust-toolchain.toml pins stable. --target: the prebuilt cargo-fuzz is a
           # musl binary and would otherwise default to the musl target.
@@ -82,7 +96,7 @@ jobs:
       - run: python3 tools/ct-check/grind.py
 
   jose:
-    name: JOSE, X.509 and SSH interop (jose, OpenSSL via cryptography and Node.js, OpenSSH)
+    name: JOSE, COSE, X.509 and SSH interop (jose, cbor2 + OpenSSL, cryptography, Node.js, OpenSSH)
     runs-on: ubuntu-latest
     needs: test
     steps:
@@ -98,8 +112,9 @@ jobs:
         with:
           python-version: "3.12"
       # cryptography >= 50 ships OpenSSL with ML-DSA keys and X.509 support.
-      - run: python -m pip install "cryptography>=50"
+      - run: python -m pip install "cryptography>=50" "cbor2>=5.6"
       - run: PYTHON=python ./interop/x509.sh
+      - run: PYTHON=python ./interop/cose.sh
       # Real OpenSSH servers, run unprivileged on loopback.
       - run: sudo apt-get update && sudo apt-get install -y openssh-server
       - run: ./interop/ssh.sh
