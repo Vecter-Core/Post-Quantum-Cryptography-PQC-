@@ -628,3 +628,135 @@ fn envelope_key_rotation_with_rewrap() {
         .success()
     );
 }
+
+#[test]
+fn x509_ca_issue_verify() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = |n: &str| dir.path().join(n);
+    let out = ok(&[
+        "x509",
+        "key",
+        "--alg",
+        "ML-DSA-87",
+        "--out",
+        p(&f("ca.key")),
+    ]);
+    assert!(
+        String::from_utf8(out.stdout)
+            .unwrap()
+            .starts_with("-----BEGIN PUBLIC KEY-----")
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        assert_eq!(
+            std::fs::metadata(f("ca.key")).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+    ok(&[
+        "x509",
+        "ca",
+        "--key",
+        p(&f("ca.key")),
+        "--cn",
+        "Test Root",
+        "-o",
+        p(&f("ca.pem")),
+    ]);
+    let spki = ok(&["x509", "key", "--out", p(&f("srv.key"))]).stdout;
+    std::fs::write(f("srv.pub"), spki).unwrap();
+    ok(&[
+        "x509",
+        "issue",
+        "--ca",
+        p(&f("ca.pem")),
+        "--ca-key",
+        p(&f("ca.key")),
+        "--subject-key",
+        p(&f("srv.pub")),
+        "--cn",
+        "srv",
+        "--dns",
+        "srv.example.com",
+        "--purpose",
+        "server",
+        "-o",
+        p(&f("srv.pem")),
+    ]);
+    let v = ok(&[
+        "x509",
+        "verify",
+        "--ca",
+        p(&f("ca.pem")),
+        "--dns",
+        "srv.example.com",
+        p(&f("srv.pem")),
+    ]);
+    assert!(
+        String::from_utf8(v.stdout)
+            .unwrap()
+            .trim_end()
+            .ends_with("OK")
+    );
+    assert!(
+        !vpqc(&[
+            "x509",
+            "verify",
+            "--ca",
+            p(&f("ca.pem")),
+            "--dns",
+            "other.example.com",
+            p(&f("srv.pem"))
+        ])
+        .status
+        .success()
+    );
+    assert!(
+        !vpqc(&[
+            "x509",
+            "verify",
+            "--ca",
+            p(&f("ca.pem")),
+            "--purpose",
+            "code-signing",
+            p(&f("srv.pem"))
+        ])
+        .status
+        .success()
+    );
+    // Signing with the leaf key as if it were a CA is refused.
+    assert!(
+        !vpqc(&[
+            "x509",
+            "issue",
+            "--ca",
+            p(&f("srv.pem")),
+            "--ca-key",
+            p(&f("srv.key")),
+            "--subject-key",
+            p(&f("srv.pub")),
+            "--cn",
+            "x",
+            "-o",
+            p(&f("bad.pem")),
+        ])
+        .status
+        .success()
+    );
+    // Output files are never overwritten.
+    assert!(
+        !vpqc(&[
+            "x509",
+            "ca",
+            "--key",
+            p(&f("ca.key")),
+            "--cn",
+            "Again",
+            "-o",
+            p(&f("ca.pem"))
+        ])
+        .status
+        .success()
+    );
+}

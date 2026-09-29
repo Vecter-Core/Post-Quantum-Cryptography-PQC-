@@ -1890,6 +1890,8 @@ dependencies = [
  "vpqc-format",
  "vpqc-jose",
  "vpqc-scan",
+ "vpqc-x509",
+ "zeroize",
 ]
 
 [[package]]
@@ -1996,6 +1998,19 @@ dependencies = [
  "rustls",
  "tokio",
  "tokio-rustls",
+]
+
+[[package]]
+name = "vpqc-x509"
+version = "0.0.1"
+dependencies = [
+ "base64 0.23.1",
+ "getrandom 0.4.3",
+ "sha2",
+ "subtle",
+ "vpqc-backend-libcrux",
+ "x509-parser",
+ "zeroize",
 ]
 
 [[package]]

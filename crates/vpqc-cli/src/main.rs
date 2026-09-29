@@ -1,6 +1,7 @@
 //! `vpqc` command-line tool.
 
 mod jose;
+mod x509;
 
 use std::fs;
 use std::io::{Read, Write};
@@ -247,6 +248,11 @@ enum Command {
     Jwt {
         #[command(subcommand)]
         command: jose::JwtCommand,
+    },
+    /// Post-quantum X.509: ML-DSA keys, certificates, chain verification.
+    X509 {
+        #[command(subcommand)]
+        command: x509::X509Command,
     },
     /// Describe a key, sealed file or signature.
     Inspect {
@@ -541,6 +547,7 @@ fn run(cli: Cli) -> CliResult {
         Command::Jwk { command } => jose::jwk(command),
         Command::Jws { command } => jose::jws(command),
         Command::Jwt { command } => jose::jwt(command),
+        Command::X509 { command } => x509::run(command),
     }
 }
 

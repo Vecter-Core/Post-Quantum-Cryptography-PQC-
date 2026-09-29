@@ -15,6 +15,7 @@ Review quarterly. Verify against the primary source before changing behaviour.
 | X-Wing KEM | CFRG draft, test vectors used in `vpqc-hybrid/tests` | draft-connolly-cfrg-xwing-kem | Implemented, KAT verified |
 | TLS hybrid `X25519MLKEM768` | IETF TLS WG | IETF datatracker | Integration phase |
 | Composite signatures for X.509 | IETF LAMPS drafts | IETF datatracker | Align labels and OIDs when final |
-| ML-KEM / ML-DSA in X.509 and CMS | IETF LAMPS | IETF datatracker | Align key encoding when final |
+| ML-DSA in X.509 (RFC 9881, was draft-ietf-lamps-dilithium-certificates) | RFC (**verify number**) | IETF | Implemented in `vpqc-x509`; interop-tested with OpenSSL (cryptography 50 / OpenSSL 4, Node.js / OpenSSL 3.5) |
+| ML-KEM in X.509, ML-DSA / ML-KEM in CMS | IETF LAMPS | IETF datatracker | Align key encoding when final |
 | ML-DSA for JOSE and COSE (`AKP` keys, `ML-DSA-65/87`) | IETF COSE WG draft (**check status**) | draft-ietf-cose-dilithium | Implemented in `vpqc-jose` (JOSE); interop-tested with panva/jose. COSE not yet |
 | Composite ML-DSA for JOSE/COSE | IETF draft, encoding still changing | IETF datatracker | Track; add when stable (ADR-0008) |

@@ -55,7 +55,7 @@ jobs:
       - name: Run each target for 60 seconds from the seed corpus
         working-directory: fuzz
         run: |
-          for t in parse_formats sealed_box stream signatures hpke scan jose; do
+          for t in parse_formats sealed_box stream signatures hpke scan jose x509; do
             mkdir -p corpus/$t
             # +nightly: rust-toolchain.toml pins stable. --target: the prebuilt cargo-fuzz is a
           # musl binary and would otherwise default to the musl target.
@@ -82,7 +82,7 @@ jobs:
       - run: python3 tools/ct-check/grind.py
 
   jose:
-    name: JOSE interop (panva/jose, Node.js WebCrypto)
+    name: JOSE and X.509 interop (jose, OpenSSL via cryptography and Node.js)
     runs-on: ubuntu-latest
     needs: test
     steps:
@@ -94,6 +94,12 @@ jobs:
           node-version: 24 # WebCrypto ML-DSA needs >= 24.7
       - run: cargo build --release -p vpqc-cli
       - run: ./interop/jose.sh
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # cryptography >= 50 ships OpenSSL with ML-DSA keys and X.509 support.
+      - run: python -m pip install "cryptography>=50"
+      - run: PYTHON=python ./interop/x509.sh
 
   deny:
     name: supply chain

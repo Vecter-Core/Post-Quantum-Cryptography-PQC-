@@ -71,6 +71,13 @@ fn gen_corpus() {
         put("jose", &format!("pubjwk-{i}"), &[[1, i8].as_slice(), key.verifying_key().to_jwk().as_bytes()].concat());
         put("jose", &format!("roundtrip-{i}"), &[2, i8, 7, 3, b'h', b'i']);
     }
+    let (root, leaf) = vpqc_fuzz::x509_pki();
+    put("x509", "root", root.der());
+    put("x509", "leaf", leaf.der());
+    put("x509", "leaf-pem", leaf.to_pem().as_bytes());
+    let k = vpqc_x509::PrivateKey::from_seed(vpqc_x509::Algorithm::MlDsa87, &[0x43; 32]);
+    put("x509", "pkcs8", &k.to_pkcs8_der());
+    put("x509", "spki", &k.public_key().to_spki_der());
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../crates/vpqc-scan/tests/fixtures");
     for entry in std::fs::read_dir(fixtures).unwrap() {
         let entry = entry.unwrap();

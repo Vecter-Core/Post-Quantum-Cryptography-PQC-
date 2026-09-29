@@ -1456,6 +1456,7 @@ dependencies = [
  "vpqc-hpke",
  "vpqc-jose",
  "vpqc-scan",
+ "vpqc-x509",
 ]
 
 [[package]]
@@ -1509,6 +1510,19 @@ dependencies = [
  "regex",
  "serde_json",
  "x509-parser",
+]
+
+[[package]]
+name = "vpqc-x509"
+version = "0.0.1"
+dependencies = [
+ "base64",
+ "getrandom",
+ "sha2",
+ "subtle",
+ "vpqc-backend-libcrux",
+ "x509-parser",
+ "zeroize",
 ]
 
 [[package]]

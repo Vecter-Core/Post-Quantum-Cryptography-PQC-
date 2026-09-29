@@ -17,6 +17,8 @@ vpqc-core.workspace = true
 vpqc-format.workspace = true
 vpqc-scan.workspace = true
 vpqc-jose.workspace = true
+vpqc-x509.workspace = true
+zeroize.workspace = true
 serde_json.workspace = true
 clap = { version = "4", features = ["derive"] }
 

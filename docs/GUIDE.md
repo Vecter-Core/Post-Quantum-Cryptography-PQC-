@@ -175,6 +175,25 @@ let claims = jwt::decode(&token, &key.verifying_key(), &jwt::Validation {
   8 KB thường gặp của proxy; kiểm tra trước khi gửi trong `Authorization`.
 - Đây là ML-DSA "thuần" (chuẩn), không phải chữ ký lai: để các hệ khác xác minh được (ADR-0008).
 
+## 3c. Chứng chỉ X.509 hậu lượng tử (ML-DSA)
+
+Chứng chỉ theo RFC 9881, dùng được với OpenSSL ≥ 3.5 (đã kiểm với `cryptography` và Node.js):
+
+```sh
+vpqc x509 key --alg ML-DSA-87 --out root.key > root.pub            # CA gốc sống lâu: ML-DSA-87
+vpqc x509 ca --key root.key --cn "Công ty X Root CA" --days 7300 -o root.pem
+vpqc x509 key --out api.key > api.pub
+vpqc x509 issue --ca root.pem --ca-key root.key --subject-key api.pub \
+  --cn api.congtyx.vn --dns api.congtyx.vn --purpose server --days 90 -o api.pem
+vpqc x509 verify --ca root.pem --dns api.congtyx.vn api.pem
+```
+
+- Khoá riêng ở dạng PKCS#8 "seed" (54 byte, quyền 0600); đọc được khoá của OpenSSL/Node.
+- `verify` là bộ kiểm tra chuỗi **tối giản** cho chuỗi toàn ML-DSA (chữ ký, hạn, CA, pathLen,
+  key usage, EKU, tên DNS). Không có thu hồi (CRL/OCSP) hay name constraints; với TLS dùng
+  trình duyệt/thư viện chuẩn khi chúng hỗ trợ ML-DSA.
+- Chứng chỉ ML-DSA **lớn** (leaf 5,6–6,9 KB, chuỗi ~14 KB): cân nhắc cho thiết bị nhúng và TLS.
+
 ## 3b. Lỗi và bảo mật khi dùng
 
 - Giải mã/xác minh thất bại luôn báo lỗi gộp (`DecryptionFailed` / `VerificationFailed`): sai khoá,

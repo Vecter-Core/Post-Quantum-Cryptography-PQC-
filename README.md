@@ -68,6 +68,17 @@ vpqc jwt verify --key issuer.pub.jwk token
 ML-DSA-65/87 theo draft IETF (`kty: AKP`), tương thích thư viện `jose` (Node.js); crate
 `vpqc-jose`.
 
+## Chứng chỉ X.509 hậu lượng tử
+
+```sh
+vpqc x509 key --alg ML-DSA-87 --out root.key > root.pub
+vpqc x509 ca --key root.key --cn "Example Root" -o root.pem
+vpqc x509 issue --ca root.pem --ca-key root.key --subject-key api.pub --cn api --dns api.example.com --purpose server -o api.pem
+vpqc x509 verify --ca root.pem --dns api.example.com api.pem
+```
+
+ML-DSA theo RFC 9881, tương thích OpenSSL (đã kiểm với Python `cryptography` và Node.js); crate `vpqc-x509`.
+
 ## TLS lai và HPKE
 
 ```sh
