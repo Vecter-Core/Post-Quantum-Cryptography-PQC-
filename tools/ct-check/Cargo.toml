@@ -1,0 +1,27 @@
+[package]
+name = "vpqc-ct-check"
+description = "dudect-style timing leakage checks for vpqc's secret-dependent operations"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+vpqc-backend-libcrux.workspace = true
+vpqc-hybrid.workspace = true
+chacha20poly1305.workspace = true
+x25519-dalek.workspace = true
+getrandom.workspace = true
+ed25519-dalek.workspace = true
+p384.workspace = true
+
+# Workspace lints, except that `unsafe` is denied rather than forbidden: the valgrind client
+# request in `grind.rs` is inline assembly.
+[lints.rust]
+unsafe_code = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+undocumented_unsafe_blocks = "deny"

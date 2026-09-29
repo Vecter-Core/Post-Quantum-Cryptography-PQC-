@@ -11,6 +11,7 @@ members = [
     "crates/vpqc-scan",
     "crates/vpqc-hpke",
     "crates/vpqc-tls",
+    "tools/ct-check",
 ]
 
 exclude = ["bindings/python", "bindings/js", "fuzz"]
@@ -61,3 +62,10 @@ all = { level = "warn", priority = -1 }
 lto = "thin"
 codegen-units = 1
 overflow-checks = true
+
+# Overflow checks stay on for vpqc's own crates (parsing lengths, offsets), but not for the
+# cryptographic dependencies: there they add a panic branch to every field multiplication on
+# secret data, which the libraries' constant-time design does not expect (found by
+# tools/ct-check/grind.sh).
+[profile.release.package."*"]
+overflow-checks = false

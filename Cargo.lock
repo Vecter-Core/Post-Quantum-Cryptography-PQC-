@@ -1900,6 +1900,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "vpqc-ct-check"
+version = "0.0.1"
+dependencies = [
+ "chacha20poly1305",
+ "ed25519-dalek",
+ "getrandom 0.4.3",
+ "p384",
+ "vpqc-backend-libcrux",
+ "vpqc-hybrid",
+ "x25519-dalek",
+]
+
+[[package]]
 name = "vpqc-ffi"
 version = "0.0.1"
 dependencies = [
