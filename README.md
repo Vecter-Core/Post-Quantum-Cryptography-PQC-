@@ -7,7 +7,7 @@ Achieving quantum security while maintaining quantum resistance makes it easier 
 - Mỗi ngôn ngữ có một thư viện riêng, mỏng, viết theo phong cách của ngôn ngữ đó.
 - Dùng **cơ chế lai** (cổ điển + hậu lượng tử) ở nơi cần chống "thu thập bây giờ, giải mã sau", và giữ thuật toán cổ điển ở nơi không cần thiết.
 
-Xem kế hoạch đầy đủ tại [docs/ROADMAP.md](docs/ROADMAP.md).
+Xem kế hoạch đầy đủ tại [docs/ROADMAP.md](docs/ROADMAP.md) và hướng dẫn dùng nhanh tại [docs/GUIDE.md](docs/GUIDE.md).
 
 ## Trạng thái
 
