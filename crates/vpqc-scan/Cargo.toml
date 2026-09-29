@@ -1,0 +1,20 @@
+[package]
+name = "vpqc-scan"
+description = "Cryptographic inventory scanner: finds quantum-vulnerable algorithms in code, configs and certificates and emits a CycloneDX CBOM"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.88"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+base64.workspace = true
+regex.workspace = true
+serde_json.workspace = true
+x509-parser.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+
+[lints]
+workspace = true

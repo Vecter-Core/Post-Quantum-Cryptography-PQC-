@@ -33,6 +33,11 @@ jobs:
       - run: cargo clippy --workspace --all-targets -- -D warnings
         if: matrix.toolchain == 'stable'
       - run: cargo test --workspace
+        if: matrix.toolchain == 'stable'
+      # MSRV: the library crates must keep building on the oldest supported compiler.
+      # (vpqc-scan and vpqc-cli need 1.88 because of patched dependencies.)
+      - run: cargo build -p vpqc-core -p vpqc-backend-libcrux -p vpqc-hybrid -p vpqc-format -p vpqc -p vpqc-ffi
+        if: matrix.toolchain != 'stable'
 
   deny:
     name: supply chain
@@ -114,6 +119,16 @@ jobs:
       - run: |
           gem install ffi --no-document
           VPQC_LIBRARY="$PWD/target/release/libvpqc_ffi.so" ruby -Ibindings/ruby/lib bindings/ruby/test/test_vpqc.rb
+
+      # CBOM output must validate against the official CycloneDX 1.6 schema
+      - run: |
+          . .venv/bin/activate
+          pip install jsonschema referencing
+          mkdir -p /tmp/cdx && for f in bom-1.6.schema.json spdx.schema.json jsf-0.82.schema.json; do
+            curl -sSfL -o /tmp/cdx/$f https://raw.githubusercontent.com/CycloneDX/specification/master/schema/$f
+          done
+          ./target/release/vpqc scan crates/vpqc-scan/tests/fixtures --format cbom -o /tmp/cbom.json
+          python scripts/validate-cbom.py /tmp/cbom.json /tmp/cdx
 
       # Cross-language interoperability matrix (all implementations)
       - run: |

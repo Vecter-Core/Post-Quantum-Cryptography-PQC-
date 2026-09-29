@@ -176,3 +176,31 @@ fn profiles_lists_all() {
         assert!(text.contains(name));
     }
 }
+
+#[test]
+fn scan_reports_and_gates() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("a.py"),
+        "k = rsa.generate_private_key(65537, 2048)\n",
+    )
+    .unwrap();
+    let out = ok(&["scan", p(dir.path())]);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        text.contains("QUANTUM-VULNERABLE") && text.contains("RSA"),
+        "{text}"
+    );
+
+    // Gate: policy failure gives exit code 2.
+    let gated = vpqc(&["scan", p(dir.path()), "--fail-on", "quantum-vulnerable"]);
+    assert_eq!(gated.status.code(), Some(2));
+
+    // A clean tree passes the gate; the CBOM is valid JSON.
+    let clean = tempfile::tempdir().unwrap();
+    std::fs::write(clean.path().join("b.py"), "x = 1\n").unwrap();
+    ok(&["scan", p(clean.path()), "--fail-on", "weak"]);
+    let cbom = ok(&["scan", p(dir.path()), "--format", "cbom"]);
+    let v: serde_json::Value = serde_json::from_slice(&cbom.stdout).unwrap();
+    assert_eq!(v["specVersion"], "1.6");
+}

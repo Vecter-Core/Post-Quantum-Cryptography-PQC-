@@ -30,6 +30,24 @@ enum Purpose {
 }
 
 #[derive(Clone, Copy, ValueEnum)]
+enum ScanFormat {
+    /// Human-readable report.
+    Text,
+    /// Machine-readable report.
+    Json,
+    /// CycloneDX 1.6 cryptographic bill of materials.
+    Cbom,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
+enum FailOn {
+    /// Exit non-zero if any quantum-vulnerable finding exists.
+    QuantumVulnerable,
+    /// Exit non-zero on quantum-vulnerable or weak findings.
+    Weak,
+}
+
+#[derive(Clone, Copy, ValueEnum)]
 enum ProfileArg {
     Standard,
     FastAuth,
@@ -122,6 +140,33 @@ enum Command {
         sig: PathBuf,
         /// Input file (default: stdin).
         input: Option<PathBuf>,
+    },
+    /// Inventory cryptography in a directory: quantum-vulnerable algorithms in code, configs,
+    /// certificates and key files (pattern-based for code; certificates are parsed exactly).
+    Scan {
+        /// File or directory to scan.
+        path: PathBuf,
+        /// Output format.
+        #[arg(long, value_enum, default_value = "text")]
+        format: ScanFormat,
+        /// Include informational findings (strong symmetric algorithms) in text output.
+        #[arg(long)]
+        all: bool,
+        /// Also scan documentation files (.md, .txt, ...).
+        #[arg(long)]
+        include_docs: bool,
+        /// Also report mentions inside comment lines.
+        #[arg(long)]
+        include_comments: bool,
+        /// Skip paths containing this text (repeatable).
+        #[arg(long)]
+        exclude: Vec<String>,
+        /// Exit with status 2 if findings of this severity (or worse) exist. For CI gating.
+        #[arg(long, value_enum)]
+        fail_on: Option<FailOn>,
+        /// Write the report to a file instead of stdout.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
     /// Describe a key, sealed file or signature.
     Inspect {
@@ -297,6 +342,47 @@ fn run(cli: Cli) -> CliResult {
             let data = read_input(&input)?;
             signing::verify(&pk, &data, context.as_bytes(), &sig).map_err(err)?;
             eprintln!("signature OK ({})", describe_alg(pk.algorithm()));
+            Ok(())
+        }
+        Command::Scan {
+            path,
+            format,
+            all,
+            include_docs,
+            include_comments,
+            exclude,
+            fail_on,
+            output,
+        } => {
+            let options = vpqc_scan::Options {
+                include_docs,
+                include_comments,
+                exclude,
+                ..Default::default()
+            };
+            let report = vpqc_scan::scan_path(&path, &options)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            let text = match format {
+                ScanFormat::Text => vpqc_scan::to_text(&report, all),
+                ScanFormat::Json => vpqc_scan::to_json(&report),
+                ScanFormat::Cbom => vpqc_scan::to_cbom(&report),
+            };
+            write_output(&output, text.as_bytes())?;
+            let bad = match fail_on {
+                Some(FailOn::QuantumVulnerable) => {
+                    report.count(vpqc_scan::Risk::QuantumVulnerable) > 0
+                }
+                Some(FailOn::Weak) => {
+                    report.count(vpqc_scan::Risk::QuantumVulnerable)
+                        + report.count(vpqc_scan::Risk::Weak)
+                        > 0
+                }
+                None => false,
+            };
+            if bad {
+                eprintln!("vpqc scan: policy failed (--fail-on)");
+                std::process::exit(2);
+            }
             Ok(())
         }
         Command::Inspect { file } => inspect(&file),

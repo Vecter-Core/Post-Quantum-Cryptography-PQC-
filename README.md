@@ -36,3 +36,15 @@ cargo run -q -p vpqc-cli -- open --key alice.vpqc-secret msg.vpqc
 | .NET, Swift, Kotlin/Android, Dart | | C ABI | chưa |
 
 Kiểm tra tương tác giữa các thư viện: `interop/run.sh` (xem `docs/ROADMAP.md`).
+
+## Kiểm kê mật mã (migration)
+
+```sh
+vpqc scan ./my-project                       # báo cáo, xếp theo mức ưu tiên di trú
+vpqc scan ./my-project --format cbom -o cbom.json   # CycloneDX 1.6 CBOM
+vpqc scan ./my-project --fail-on quantum-vulnerable # thoát mã 2 nếu còn thuật toán dễ bị lượng tử
+```
+
+Chứng chỉ X.509 và tệp khoá được phân tích chính xác; mã nguồn/cấu hình được quét theo mẫu
+(chỉ tìm *lần nhắc tên*, không chứng minh việc sử dụng), nên có thể có dương tính giả. Khoá
+không bao giờ được in ra.
