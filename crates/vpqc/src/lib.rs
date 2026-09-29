@@ -24,6 +24,9 @@
 //! **Pre-release, unaudited.** Do not use to protect real secrets yet.
 
 pub mod encryption;
+/// HPKE (RFC 9180bis) with post-quantum and hybrid KEMs, for protocols that need it
+/// (MLS, ECH, OHTTP, ...). Most applications should use [`encryption`] instead.
+pub use vpqc_hpke as hpke;
 pub mod keys;
 mod registry;
 pub mod signing;
