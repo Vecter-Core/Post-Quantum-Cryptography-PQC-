@@ -13,7 +13,7 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
-use vpqc::{Error, Profile, encryption, keys, signing};
+use vpqc::{AlgorithmId, Error, Profile, encryption, keys, signing};
 use zeroize::Zeroize;
 
 /// ABI version: major in the high 16 bits, minor in the low 16 bits.
@@ -469,6 +469,84 @@ pub unsafe extern "C" fn vpqc_key_from_text(
         };
         // SAFETY: `out` is non-null and valid.
         unsafe { put(out, bytes) };
+        Ok(())
+    })
+}
+
+/// Raw KEM encapsulation to an encryption public key (for protocols and the Java JCA `KEM`).
+/// Writes the 32-byte shared secret to `shared_secret_out` and the KEM ciphertext to `ciphertext_out`.
+/// Most applications should use [`vpqc_seal`] instead.
+///
+/// # Safety
+/// `(public_key, public_key_len)` must describe readable memory; `shared_secret_out` must be
+/// valid for writes of 32 bytes; `ciphertext_out` must be valid for a write of one `vpqc_buf`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vpqc_kem_encapsulate(
+    public_key: *const u8,
+    public_key_len: usize,
+    shared_secret_out: *mut u8,
+    ciphertext_out: *mut vpqc_buf,
+) -> i32 {
+    // SAFETY: `ciphertext_out` is null or valid per the contract.
+    unsafe { clear(ciphertext_out) };
+    if ciphertext_out.is_null() || shared_secret_out.is_null() {
+        return VPQC_ERR_INVALID_ARGUMENT;
+    }
+    guard(|| {
+        // SAFETY: pointer/length pair is valid per the contract.
+        let pk = unsafe { slice(public_key, public_key_len)? };
+        let pk = keys::public_from_bytes(pk).map_err(|e| code(&e))?;
+        let AlgorithmId::Kem(id) = pk.algorithm() else {
+            return Err(VPQC_ERR_ALGORITHM_MISMATCH);
+        };
+        let (ct, ss) = vpqc::kem(id)
+            .map_err(|e| code(&e))?
+            .encapsulate(&pk, &mut vpqc::OsRng)
+            .map_err(|e| code(&e))?;
+        // SAFETY: `shared_secret_out` is valid for 32 bytes; `ciphertext_out` is valid.
+        unsafe {
+            ptr::copy_nonoverlapping(ss.expose().as_ptr(), shared_secret_out, 32);
+            put(ciphertext_out, ct);
+        }
+        Ok(())
+    })
+}
+
+/// Raw KEM decapsulation. Writes the 32-byte shared secret to `shared_secret_out`.
+/// ML-KEM uses implicit rejection: a modified ciphertext yields an unrelated secret, not an error.
+///
+/// # Safety
+/// Each `(ptr, len)` pair must describe readable memory; `shared_secret_out` must be valid for
+/// writes of 32 bytes.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vpqc_kem_decapsulate(
+    secret_key: *const u8,
+    secret_key_len: usize,
+    ciphertext: *const u8,
+    ciphertext_len: usize,
+    shared_secret_out: *mut u8,
+) -> i32 {
+    if shared_secret_out.is_null() {
+        return VPQC_ERR_INVALID_ARGUMENT;
+    }
+    guard(|| {
+        // SAFETY: pointer/length pairs are valid per the contract.
+        let (sk, ct) = unsafe {
+            (
+                slice(secret_key, secret_key_len)?,
+                slice(ciphertext, ciphertext_len)?,
+            )
+        };
+        let sk = keys::secret_from_bytes(sk).map_err(|e| code(&e))?;
+        let AlgorithmId::Kem(id) = sk.algorithm() else {
+            return Err(VPQC_ERR_ALGORITHM_MISMATCH);
+        };
+        let ss = vpqc::kem(id)
+            .map_err(|e| code(&e))?
+            .decapsulate(&sk, ct)
+            .map_err(|e| code(&e))?;
+        // SAFETY: `shared_secret_out` is valid for 32 bytes.
+        unsafe { ptr::copy_nonoverlapping(ss.expose().as_ptr(), shared_secret_out, 32) };
         Ok(())
     })
 }

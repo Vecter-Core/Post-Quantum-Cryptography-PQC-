@@ -73,6 +73,20 @@ byte[] sealed = Vpqc.seal(keys.publicKey(), data, aad);
 byte[] plain = Vpqc.open(keys.secretKey(), sealed, aad);
 ```
 
+**Java qua JCA** (dùng được với code sẵn có viết theo `java.security`)
+```java
+Security.addProvider(new VpqcProvider());
+KeyPairGenerator kpg = KeyPairGenerator.getInstance("VPQC-SIG", "VPQC");
+kpg.initialize(new VpqcParameterSpec(Profile.STANDARD));
+KeyPair kp = kpg.generateKeyPair();
+Signature s = Signature.getInstance("VPQC-SIG", "VPQC");
+s.setParameter(new VpqcSignatureParameterSpec("my-app/v1"));   // bắt buộc
+s.initSign(kp.getPrivate()); s.update(data); byte[] sig = s.sign();
+
+KEM kem = KEM.getInstance("VPQC-KEM", "VPQC");                 // javax.crypto.KEM, JDK 21+
+KEM.Encapsulated e = kem.newEncapsulator(kemKeys.getPublic()).encapsulate(0, 32, "AES");
+```
+
 **PHP** (`ext-ffi`), **Ruby** (gem `ffi`), **C/C++** (`vpqc.h`): xem `bindings/php`,
 `bindings/ruby`, `crates/vpqc-ffi/include/vpqc.h`.
 

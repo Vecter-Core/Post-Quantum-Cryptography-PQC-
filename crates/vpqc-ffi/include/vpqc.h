@@ -85,6 +85,14 @@ int vpqc_verify(const uint8_t *public_key, size_t public_key_len,
 int vpqc_key_to_text(int kind, const uint8_t *key, size_t key_len, vpqc_buf *out);
 int vpqc_key_from_text(int kind, const uint8_t *text, size_t text_len, vpqc_buf *out);
 
+/* Raw KEM (for protocols / JCA KEM). Shared secret is always 32 bytes.
+ * Prefer vpqc_seal / vpqc_open for application data. */
+int vpqc_kem_encapsulate(const uint8_t *public_key, size_t public_key_len,
+                         uint8_t shared_secret_out[32], vpqc_buf *ciphertext_out);
+int vpqc_kem_decapsulate(const uint8_t *secret_key, size_t secret_key_len,
+                         const uint8_t *ciphertext, size_t ciphertext_len,
+                         uint8_t shared_secret_out[32]);
+
 #ifdef __cplusplus
 }
 #endif

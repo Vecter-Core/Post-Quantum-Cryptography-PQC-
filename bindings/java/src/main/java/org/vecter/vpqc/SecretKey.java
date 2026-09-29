@@ -45,6 +45,7 @@ public final class SecretKey implements Destroyable {
         return Native.keyToText(Native.KEY_SECRET, raw());
     }
 
+    /** @return the internal encoding without copying (package use only). */
     byte[] raw() {
         if (destroyed) {
             throw new IllegalStateException("secret key has been destroyed");

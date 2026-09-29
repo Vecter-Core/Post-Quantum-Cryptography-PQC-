@@ -90,6 +90,29 @@ public final class Vpqc {
         Native.verify(publicKey.raw(), message, context, signature);
     }
 
+    /**
+     * Raw KEM encapsulation, for protocols that need a shared secret (and for the JCA
+     * {@code KEM} service). Prefer {@link #seal} for application data.
+     *
+     * @param recipient encryption public key
+     * @return {shared secret (32 bytes), KEM ciphertext}
+     */
+    public static byte[][] kemEncapsulate(PublicKey recipient) {
+        return Native.kemEncapsulate(recipient.raw());
+    }
+
+    /**
+     * Raw KEM decapsulation. ML-KEM uses implicit rejection: a modified ciphertext yields an
+     * unrelated secret rather than an error.
+     *
+     * @param secret encryption secret key
+     * @param ciphertext KEM ciphertext
+     * @return the 32-byte shared secret
+     */
+    public static byte[] kemDecapsulate(SecretKey secret, byte[] ciphertext) {
+        return Native.kemDecapsulate(secret.raw(), ciphertext);
+    }
+
     /** @return the native ABI version ({@code major << 16 | minor}) */
     public static int abiVersion() {
         return Native.abiVersion();
