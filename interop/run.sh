@@ -51,7 +51,9 @@ go_() { # go driver takes numeric profile ids
 }
 JAVA_OUT=""
 java_() {
-  "${JAVA:-java}" --enable-preview --enable-native-access=ALL-UNNAMED -XX:TieredStopAtLevel=1 -Xshare:auto \
+  # UTF-8 locale: under the C locale the JVM decodes non-ASCII arguments (the passphrases
+  # below) to U+FFFD.
+  LC_ALL=C.UTF-8 "${JAVA:-java}" --enable-preview --enable-native-access=ALL-UNNAMED -XX:TieredStopAtLevel=1 -Xshare:auto \
     -Dvpqc.library.path="$ROOT/target/release" -cp "$JAVA_OUT:$ROOT/bindings/java/target/classes" JavaDriver "$@" 2> >(grep -v JAVA_TOOL_OPTIONS >&2)
 }
 php_()  { VPQC_LIBRARY="$ROOT/target/release/libvpqc_ffi.so" "${PHP:-php}" -d ffi.enable=1 "$ROOT/interop/drivers/php_driver.php" "$@"; }
