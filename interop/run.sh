@@ -29,6 +29,8 @@ cli() { # cli keygen|seal|open|sign|verify ...
     open)   "$VPQC_CLI" open --key "$1" --aad "$2" -o "$4" "$3" ;;
     sign)   "$VPQC_CLI" sign --key "$1" --context "$2" -o "$4" "$3" ;;
     verify) "$VPQC_CLI" verify --key "$1" --context "$2" --sig "$3" "$4" 2>/dev/null ;;
+    encrypt-file) "$VPQC_CLI" encrypt --to "$1" --aad "$2" -o "$4" --force "$3" ;;
+    decrypt-file) "$VPQC_CLI" decrypt --key "$1" --aad "$2" -o "$4" --force "$3" ;;
   esac
 }
 py()   { "$PYTHON" "$ROOT/interop/drivers/py_driver.py" "$@"; }
@@ -90,6 +92,49 @@ for profile in "${PROFILES[@]}"; do
   done
   echo "profile $profile: done"
 done
+
+# Streaming file encryption (ADR-0007): every implementation encrypts, every one decrypts
+# (Node uses the incremental StreamEncryptor/StreamDecryptor classes of the WASM build).
+STREAM_IMPLS=("${IMPLS[@]}")
+head -c 300000 /dev/urandom > "$WORK/big.bin"   # several 64 KiB chunks
+for profile in standard high; do
+  run cli keygen encrypt "$profile" "$WORK/senc"
+  for e in "${STREAM_IMPLS[@]}"; do
+    rm -f "$WORK/big.vpqc"
+    run "$e" encrypt-file "$WORK/senc.pub" "backup" "$WORK/big.bin" "$WORK/big.vpqc"
+    for d in "${STREAM_IMPLS[@]}"; do
+      rm -f "$WORK/big.out"
+      expect_ok run "$d" decrypt-file "$WORK/senc.sec" "backup" "$WORK/big.vpqc" "$WORK/big.out"
+      cmp -s "$WORK/big.out" "$WORK/big.bin" || { echo "FAIL: stream plaintext differs ($e -> $d, $profile)"; fail=$((fail+1)); }
+      rm -f "$WORK/big.bad"
+      expect_fail run "$d" decrypt-file "$WORK/senc.sec" "wrong" "$WORK/big.vpqc" "$WORK/big.bad"
+      [ -e "$WORK/big.bad" ] && { echo "FAIL: $d left output after failed decryption"; fail=$((fail+1)); }
+    done
+  done
+done
+# Truncated stream is rejected by every implementation.
+head -c 200000 "$WORK/big.vpqc" > "$WORK/cut.vpqc"
+for d in "${STREAM_IMPLS[@]}"; do
+  expect_fail run "$d" decrypt-file "$WORK/senc.sec" "backup" "$WORK/cut.vpqc" "$WORK/cut.out"
+done
+# The committed regression vector decrypts identically everywhere.
+"$PYTHON" - "$ROOT/crates/vpqc/tests/data/stream-v1.json" "$WORK" <<'PY'
+import json, sys, subprocess
+v = json.load(open(sys.argv[1])); w = sys.argv[2]
+open(f"{w}/vec.vpqc", "wb").write(bytes.fromhex(v["ciphertext"]))
+open(f"{w}/vec.pt", "wb").write(bytes((i * 31) % 251 for i in range(v["plaintext_len"])))
+open(f"{w}/vec.aad", "w").write(bytes.fromhex(v["aad"]).decode())
+sk = bytes.fromhex(v["secret_key"])
+import base64
+b64 = base64.b64encode(sk).decode()
+open(f"{w}/vec.sec", "w").write("-----BEGIN VPQC SECRET KEY-----\n" + "\n".join(b64[i:i+64] for i in range(0, len(b64), 64)) + "\n-----END VPQC SECRET KEY-----\n")
+PY
+for d in "${STREAM_IMPLS[@]}"; do
+  rm -f "$WORK/vec.out"
+  expect_ok run "$d" decrypt-file "$WORK/vec.sec" "$(cat "$WORK/vec.aad")" "$WORK/vec.vpqc" "$WORK/vec.out"
+  cmp -s "$WORK/vec.out" "$WORK/vec.pt" || { echo "FAIL: $d regression vector plaintext differs"; fail=$((fail+1)); }
+done
+echo "streaming: done"
 
 # Tampered data is rejected everywhere.
 cp "$WORK/signature" "$WORK/bad.sig"; printf '\x00' | dd of="$WORK/bad.sig" bs=1 seek=100 conv=notrunc 2>/dev/null

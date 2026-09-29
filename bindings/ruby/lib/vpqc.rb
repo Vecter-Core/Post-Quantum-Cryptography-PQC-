@@ -26,6 +26,9 @@ module Vpqc
   # A key, envelope or argument is malformed or of the wrong kind.
   class InvalidInputError < Error; end
 
+  # An operating-system I/O error (file not found, permission denied, ...).
+  class IOError < Error; end
+
   # An encoded public key. Safe to share.
   class PublicKey
     attr_reader :bytes
@@ -145,6 +148,17 @@ module Vpqc
       true
     rescue VerificationError
       false
+    end
+
+    # Encrypt a file of any size in constant memory. Returns plaintext bytes.
+    def encrypt_file(public_key, input, output, aad: "")
+      Native.file(:vpqc_encrypt_file, public_key.bytes, aad, input, output)
+    end
+
+    # Decrypt a file produced by #encrypt_file. The output appears only if the whole stream
+    # verifies; raises Vpqc::DecryptionError otherwise.
+    def decrypt_file(secret_key, input, output, aad: "")
+      Native.file(:vpqc_decrypt_file, secret_key.raw, aad, input, output)
     end
 
     def abi_version

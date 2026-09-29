@@ -121,3 +121,54 @@ def test_interop_with_c_abi_format(tmp_path):
     res = subprocess.run([cli, "open", "--key", str(tmp_path / "k.sec"), "--aad", "y",
                           str(tmp_path / "py.sealed")], check=True, capture_output=True)
     assert res.stdout == b"from python"
+
+
+def test_file_streaming(tmp_path):
+    keys = vpqc.generate_encryption_keypair()
+    data = bytes(range(256)) * 20_000  # ~5 MiB, several chunks
+    src, enc, out = tmp_path / "in.bin", tmp_path / "in.bin.vpqc", tmp_path / "out.bin"
+    src.write_bytes(data)
+    assert vpqc.encrypt_file(keys.public, src, enc, aad=b"backup") == len(data)
+    assert vpqc.decrypt_file(keys.secret, enc, out, aad=b"backup") == len(data)
+    assert out.read_bytes() == data
+
+    # Wrong context or truncation: DecryptionError and no output file.
+    with pytest.raises(vpqc.DecryptionError):
+        vpqc.decrypt_file(keys.secret, enc, tmp_path / "x.bin", aad=b"other")
+    cut = tmp_path / "cut.vpqc"
+    cut.write_bytes(enc.read_bytes()[:-50])
+    with pytest.raises(vpqc.DecryptionError):
+        vpqc.decrypt_file(keys.secret, cut, tmp_path / "y.bin", aad=b"backup")
+    assert not (tmp_path / "x.bin").exists() and not (tmp_path / "y.bin").exists()
+    assert not [p for p in tmp_path.iterdir() if p.name.endswith(".vpqc-tmp")]
+
+    # File errors are OSError, wrong key kinds are InvalidInputError.
+    with pytest.raises(OSError):
+        vpqc.encrypt_file(keys.public, tmp_path / "missing", tmp_path / "z")
+    with pytest.raises(vpqc.InvalidInputError):
+        vpqc.decrypt_file(vpqc.generate_encryption_keypair("cnsa2").secret, enc, tmp_path / "w", aad=b"backup")
+    # A stream is not a sealed box.
+    with pytest.raises(vpqc.VpqcError):
+        vpqc.unseal(keys.secret, enc.read_bytes())
+
+
+def test_incremental_stream_objects(tmp_path):
+    import random
+    keys = vpqc.generate_encryption_keypair()
+    data = random.Random(1).randbytes(700_000)
+    enc = vpqc.StreamEncryptor(keys.public, aad=b"upload")
+    ct = b"".join(enc.update(data[i:i + 12_345]) for i in range(0, len(data), 12_345)) + enc.finalize()
+    # Interoperable with the file API.
+    (tmp_path / "s.vpqc").write_bytes(ct)
+    vpqc.decrypt_file(keys.secret, tmp_path / "s.vpqc", tmp_path / "s.out", aad=b"upload")
+    assert (tmp_path / "s.out").read_bytes() == data
+    dec = vpqc.StreamDecryptor(keys.secret, aad=b"upload")
+    out = b"".join(dec.update(ct[i:i + 999]) for i in range(0, len(ct), 999)) + dec.finalize()
+    assert out == data
+    # Truncation is caught at finalize().
+    dec = vpqc.StreamDecryptor(keys.secret, aad=b"upload")
+    dec.update(ct[:-10])
+    with pytest.raises(vpqc.DecryptionError):
+        dec.finalize()
+    with pytest.raises(vpqc.VpqcError):
+        enc.update(b"after finalize")

@@ -28,6 +28,8 @@ module Vpqc
                     %i[buffer_in size_t buffer_in size_t buffer_in size_t buffer_in size_t], :int
     attach_function :vpqc_key_to_text, %i[int buffer_in size_t pointer], :int
     attach_function :vpqc_key_from_text, %i[int buffer_in size_t pointer], :int
+    attach_function :vpqc_encrypt_file, %i[buffer_in size_t buffer_in size_t string string pointer], :int
+    attach_function :vpqc_decrypt_file, %i[buffer_in size_t buffer_in size_t string string pointer], :int
 
     module_function
 
@@ -37,6 +39,7 @@ module Vpqc
       when 8 then DecryptionError.new(message, code)
       when 9 then VerificationError.new(message, code)
       when 1, 3, 4, 5, 6, 10 then InvalidInputError.new(message, code)
+      when 11 then IOError.new(message, code)
       else Error.new(message, code)
       end
     end
@@ -79,6 +82,13 @@ module Vpqc
     def verify(pk, msg, ctx, sig)
       pk, msg, ctx, sig = bin(pk), bin(msg), bin(ctx), bin(sig)
       check(vpqc_verify(pk, pk.bytesize, msg, msg.bytesize, ctx, ctx.bytesize, sig, sig.bytesize))
+    end
+
+    def file(fn, key, aad, input, output)
+      key, aad = bin(key), bin(aad)
+      n = FFI::MemoryPointer.new(:uint64)
+      check(send(fn, key, key.bytesize, aad, aad.bytesize, input.to_s, output.to_s, n))
+      n.read_uint64
     end
 
     def key_to_text(kind, key)

@@ -41,6 +41,8 @@ pub const VPQC_ERR_DECRYPTION_FAILED: i32 = 8;
 pub const VPQC_ERR_VERIFICATION_FAILED: i32 = 9;
 /// Signing context longer than 255 bytes.
 pub const VPQC_ERR_CONTEXT_TOO_LONG: i32 = 10;
+/// An operating-system I/O error (file not found, permission denied, disk full, ...).
+pub const VPQC_ERR_IO: i32 = 11;
 /// Key kind selector for the text (armor) conversions.
 pub const VPQC_KEY_PUBLIC: i32 = 1;
 /// Key kind selector for the text (armor) conversions.
@@ -168,6 +170,7 @@ pub extern "C" fn vpqc_error_message(code: i32) -> *const std::ffi::c_char {
         VPQC_ERR_DECRYPTION_FAILED => b"decryption failed\0",
         VPQC_ERR_VERIFICATION_FAILED => b"signature verification failed\0",
         VPQC_ERR_CONTEXT_TOO_LONG => b"signing context longer than 255 bytes\0",
+        VPQC_ERR_IO => b"I/O error\0",
         VPQC_ERR_INTERNAL => b"internal error\0",
         _ => b"unknown error\0",
     };
@@ -547,6 +550,107 @@ pub unsafe extern "C" fn vpqc_kem_decapsulate(
             .map_err(|e| code(&e))?;
         // SAFETY: `shared_secret_out` is valid for 32 bytes.
         unsafe { ptr::copy_nonoverlapping(ss.expose().as_ptr(), shared_secret_out, 32) };
+        Ok(())
+    })
+}
+
+/// Convert a NUL-terminated path.
+///
+/// # Safety
+/// `p` must be null or a valid NUL-terminated string.
+unsafe fn path<'a>(p: *const std::ffi::c_char) -> Result<&'a std::path::Path, i32> {
+    if p.is_null() {
+        return Err(VPQC_ERR_INVALID_ARGUMENT);
+    }
+    // SAFETY: non-null and NUL-terminated per the contract.
+    let bytes = unsafe { std::ffi::CStr::from_ptr(p) }.to_bytes();
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt;
+        Ok(std::path::Path::new(std::ffi::OsStr::from_bytes(bytes)))
+    }
+    #[cfg(not(unix))]
+    {
+        std::str::from_utf8(bytes)
+            .map(std::path::Path::new)
+            .map_err(|_| VPQC_ERR_INVALID_ARGUMENT)
+    }
+}
+
+fn io_code(e: &std::io::Error) -> i32 {
+    match vpqc::stream::crypto_error(e) {
+        Some(c) => code(c),
+        None => VPQC_ERR_IO,
+    }
+}
+
+/// Encrypt the file at `input_path` into `output_path` as a stream (any size, constant
+/// memory). The output is replaced atomically. `plaintext_len_out` may be null.
+///
+/// # Safety
+/// Key and `aad` pairs must describe readable memory; paths must be NUL-terminated strings
+/// (UTF-8 on Windows); `plaintext_len_out` must be null or valid for a write.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vpqc_encrypt_file(
+    public_key: *const u8,
+    public_key_len: usize,
+    aad: *const u8,
+    aad_len: usize,
+    input_path: *const std::ffi::c_char,
+    output_path: *const std::ffi::c_char,
+    plaintext_len_out: *mut u64,
+) -> i32 {
+    guard(|| {
+        // SAFETY: forwarded caller contract.
+        let (pk, aad, input, output) = unsafe {
+            (
+                slice(public_key, public_key_len)?,
+                slice(aad, aad_len)?,
+                path(input_path)?,
+                path(output_path)?,
+            )
+        };
+        let pk = keys::public_from_bytes(pk).map_err(|e| code(&e))?;
+        let n = vpqc::stream::encrypt_file(&pk, aad, input, output).map_err(|e| io_code(&e))?;
+        if !plaintext_len_out.is_null() {
+            // SAFETY: non-null and valid per the contract.
+            unsafe { plaintext_len_out.write(n) };
+        }
+        Ok(())
+    })
+}
+
+/// Decrypt a stream file. The output file appears (atomically, mode 0600 on Unix) only if the
+/// whole stream verifies; on any failure no output is left behind.
+///
+/// # Safety
+/// Same as [`vpqc_encrypt_file`].
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn vpqc_decrypt_file(
+    secret_key: *const u8,
+    secret_key_len: usize,
+    aad: *const u8,
+    aad_len: usize,
+    input_path: *const std::ffi::c_char,
+    output_path: *const std::ffi::c_char,
+    plaintext_len_out: *mut u64,
+) -> i32 {
+    guard(|| {
+        // SAFETY: forwarded caller contract.
+        let (sk, aad, input, output) = unsafe {
+            (
+                slice(secret_key, secret_key_len)?,
+                slice(aad, aad_len)?,
+                path(input_path)?,
+                path(output_path)?,
+            )
+        };
+        let sk = keys::secret_from_bytes(sk).map_err(|e| code(&e))?;
+        let n = vpqc::stream::decrypt_file(&sk, aad, input, output).map_err(|e| io_code(&e))?;
+        if !plaintext_len_out.is_null() {
+            // SAFETY: non-null and valid per the contract.
+            unsafe { plaintext_len_out.write(n) };
+        }
         Ok(())
     })
 }

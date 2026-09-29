@@ -139,4 +139,23 @@ class VpqcTest {
         }
         assertTrue(failures.isEmpty(), failures.toString());
     }
+
+    @Test
+    void fileStreaming(@org.junit.jupiter.api.io.TempDir java.nio.file.Path dir) throws Exception {
+        KeyPair k = Vpqc.generateEncryptionKeypair(Profile.STANDARD);
+        byte[] data = new byte[3_000_000];
+        for (int i = 0; i < data.length; i++) {
+            data[i] = (byte) (i * 7);
+        }
+        java.nio.file.Path in = dir.resolve("in"), enc = dir.resolve("enc"), out = dir.resolve("out");
+        java.nio.file.Files.write(in, data);
+        assertEquals(data.length, Vpqc.encryptFile(k.publicKey(), in, enc, b("ctx")));
+        assertEquals(data.length, Vpqc.decryptFile(k.secretKey(), enc, out, b("ctx")));
+        assertArrayEquals(data, java.nio.file.Files.readAllBytes(out));
+        assertThrows(VpqcException.DecryptionException.class,
+                () -> Vpqc.decryptFile(k.secretKey(), enc, dir.resolve("bad"), b("other")));
+        assertFalse(java.nio.file.Files.exists(dir.resolve("bad")));
+        assertThrows(VpqcException.IoException.class,
+                () -> Vpqc.encryptFile(k.publicKey(), dir.resolve("missing"), enc, new byte[0]));
+    }
 }

@@ -22,6 +22,14 @@ fn to_py(py: Python<'_>, e: Error) -> PyErr {
     }
 }
 
+/// Map a streaming `io::Error`: crypto failures to vpqc exceptions, the rest to `OSError`.
+fn io_to_py(py: Python<'_>, e: std::io::Error) -> PyErr {
+    match vpqc::stream::crypto_error(&e) {
+        Some(c) => to_py(py, c.clone()),
+        None => PyErr::from(e),
+    }
+}
+
 fn profile(name: &str) -> PyResult<Profile> {
     Profile::from_name(name).map_err(|_| {
         pyo3::exceptions::PyValueError::new_err(format!(
@@ -136,6 +144,115 @@ mod _vpqc {
         let pk = keys::public_from_bytes(public_key).map_err(|e| to_py(py, e))?;
         py.detach(|| signing::verify(&pk, message, context, signature))
             .map_err(|e| to_py(py, e))
+    }
+
+    /// Stream-encrypt a file (any size, constant memory). Returns plaintext bytes.
+    #[pyfunction]
+    fn encrypt_file(
+        py: Python<'_>,
+        public_key: &[u8],
+        aad: &[u8],
+        input: std::path::PathBuf,
+        output: std::path::PathBuf,
+    ) -> PyResult<u64> {
+        let pk = keys::public_from_bytes(public_key).map_err(|e| to_py(py, e))?;
+        py.detach(|| vpqc::stream::encrypt_file(&pk, aad, &input, &output))
+            .map_err(|e| io_to_py(py, e))
+    }
+
+    /// Decrypt a stream file; the output appears only if the whole stream verifies.
+    #[pyfunction]
+    fn decrypt_file(
+        py: Python<'_>,
+        secret_key: &[u8],
+        aad: &[u8],
+        input: std::path::PathBuf,
+        output: std::path::PathBuf,
+    ) -> PyResult<u64> {
+        let sk = keys::secret_from_bytes(secret_key).map_err(|e| to_py(py, e))?;
+        py.detach(|| vpqc::stream::decrypt_file(&sk, aad, &input, &output))
+            .map_err(|e| io_to_py(py, e))
+    }
+
+    /// Incremental stream encryption (ADR-0007).
+    #[pyclass(module = "vpqc._vpqc")]
+    struct StreamEncryptor {
+        inner: Option<vpqc::stream::Encryptor<Vec<u8>>>,
+    }
+
+    #[pymethods]
+    impl StreamEncryptor {
+        #[new]
+        fn new(py: Python<'_>, public_key: &[u8], aad: &[u8]) -> PyResult<Self> {
+            let pk = keys::public_from_bytes(public_key).map_err(|e| to_py(py, e))?;
+            let enc =
+                vpqc::stream::Encryptor::new(&pk, aad, Vec::new()).map_err(|e| io_to_py(py, e))?;
+            Ok(Self { inner: Some(enc) })
+        }
+
+        /// Add plaintext; returns ciphertext produced so far (first call includes the header).
+        fn update<'py>(&mut self, py: Python<'py>, data: &[u8]) -> PyResult<Bound<'py, PyBytes>> {
+            use std::io::Write;
+            let enc = self
+                .inner
+                .as_mut()
+                .ok_or_else(|| to_py(py, Error::Format("stream already finished")))?;
+            enc.write_all(data).map_err(|e| io_to_py(py, e))?;
+            Ok(PyBytes::new(py, &std::mem::take(enc.get_mut())))
+        }
+
+        /// Write the final chunk; returns the remaining ciphertext.
+        fn finalize<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+            let enc = self
+                .inner
+                .take()
+                .ok_or_else(|| to_py(py, Error::Format("stream already finished")))?;
+            Ok(PyBytes::new(
+                py,
+                &enc.finish().map_err(|e| io_to_py(py, e))?,
+            ))
+        }
+    }
+
+    /// Incremental stream decryption.
+    #[pyclass(module = "vpqc._vpqc")]
+    struct StreamDecryptor {
+        inner: Option<vpqc::stream::PushDecryptor>,
+    }
+
+    #[pymethods]
+    impl StreamDecryptor {
+        #[new]
+        fn new(py: Python<'_>, secret_key: &[u8], aad: &[u8]) -> PyResult<Self> {
+            let sk = keys::secret_from_bytes(secret_key).map_err(|e| to_py(py, e))?;
+            Ok(Self {
+                inner: Some(vpqc::stream::PushDecryptor::new(&sk, aad)),
+            })
+        }
+
+        /// Add ciphertext; returns plaintext of the chunks that are complete.
+        fn update<'py>(&mut self, py: Python<'py>, data: &[u8]) -> PyResult<Bound<'py, PyBytes>> {
+            let dec = self
+                .inner
+                .as_mut()
+                .ok_or_else(|| to_py(py, Error::Format("stream already finished")))?;
+            Ok(PyBytes::new(
+                py,
+                &dec.update(data).map_err(|e| io_to_py(py, e))?,
+            ))
+        }
+
+        /// Verify the final chunk and return its plaintext.
+        fn finalize<'py>(&mut self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+            let dec = self
+                .inner
+                .take()
+                .ok_or_else(|| to_py(py, Error::Format("stream already finished")))?;
+            Ok(PyBytes::new(
+                py,
+                &dec.finish().map_err(|e| io_to_py(py, e))?,
+            ))
+        }
     }
 
     /// Armored text encoding of a public key.

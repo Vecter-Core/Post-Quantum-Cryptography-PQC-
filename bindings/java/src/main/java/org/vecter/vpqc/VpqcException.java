@@ -27,6 +27,7 @@ public class VpqcException extends RuntimeException {
             case 8 -> new DecryptionException(code, message);
             case 9 -> new VerificationException(code, message);
             case 1, 3, 4, 5, 6, 10 -> new InvalidInputException(code, message);
+            case 11 -> new IoException(code, message);
             default -> new VpqcException(code, message);
         };
     }
@@ -54,6 +55,15 @@ public class VpqcException extends RuntimeException {
         private static final long serialVersionUID = 1L;
 
         InvalidInputException(int code, String message) {
+            super(code, message);
+        }
+    }
+
+    /** An operating-system I/O error (file not found, permission denied, disk full, ...). */
+    public static final class IoException extends VpqcException {
+        private static final long serialVersionUID = 1L;
+
+        IoException(int code, String message) {
             super(code, message);
         }
     }

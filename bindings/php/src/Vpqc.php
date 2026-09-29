@@ -61,6 +61,22 @@ final class Vpqc
         Native::verify($public->toBytes(), $message, $context, $signature);
     }
 
+    /** Encrypt a file of any size in constant memory; the output is replaced atomically. */
+    public static function encryptFile(PublicKey $recipient, string $input, string $output, string $aad = ''): int
+    {
+        return Native::file('vpqc_encrypt_file', $recipient->toBytes(), $aad, $input, $output);
+    }
+
+    /**
+     * Decrypt a file produced by encryptFile(). The output appears only if the whole stream verifies.
+     *
+     * @throws DecryptionException for a wrong key, wrong $aad or tampering
+     */
+    public static function decryptFile(SecretKey $secret, string $input, string $output, string $aad = ''): int
+    {
+        return Native::file('vpqc_decrypt_file', $secret->raw(), $aad, $input, $output);
+    }
+
     /** Native ABI version (major << 16 | minor). */
     public static function abiVersion(): int
     {

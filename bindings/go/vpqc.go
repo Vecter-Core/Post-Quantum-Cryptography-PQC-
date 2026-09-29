@@ -52,6 +52,8 @@ var (
 	ErrVerification = errors.New("vpqc: signature verification failed")
 	// ErrInvalidInput: a key, envelope or argument is malformed or of the wrong kind.
 	ErrInvalidInput = errors.New("vpqc: invalid input")
+	// ErrIO: an operating-system I/O error (file not found, permission denied, ...).
+	ErrIO = errors.New("vpqc: I/O error")
 )
 
 // Error is a failure reported by the native library.
@@ -69,6 +71,8 @@ func (e *Error) Is(target error) bool {
 		return e.Code == C.VPQC_ERR_DECRYPTION_FAILED
 	case ErrVerification:
 		return e.Code == C.VPQC_ERR_VERIFICATION_FAILED
+	case ErrIO:
+		return e.Code == C.VPQC_ERR_IO
 	case ErrInvalidInput:
 		switch e.Code {
 		case C.VPQC_ERR_INVALID_ARGUMENT, C.VPQC_ERR_INVALID_KEY, C.VPQC_ERR_ALGORITHM_MISMATCH,
@@ -230,6 +234,28 @@ func Sign(sk SecretKey, message, context []byte) ([]byte, error) {
 func Verify(pk PublicKey, message, context, signature []byte) error {
 	return check(C.vpqc_verify(ptr(pk.b), C.size_t(len(pk.b)), ptr(message), C.size_t(len(message)),
 		ptr(context), C.size_t(len(context)), ptr(signature), C.size_t(len(signature))))
+}
+
+// EncryptFile stream-encrypts the file at inPath into outPath (any size, constant memory;
+// the output is replaced atomically). It returns the number of plaintext bytes.
+func EncryptFile(pk PublicKey, inPath, outPath string, aad []byte) (uint64, error) {
+	in, out := C.CString(inPath), C.CString(outPath)
+	defer C.free(unsafe.Pointer(in))
+	defer C.free(unsafe.Pointer(out))
+	var n C.uint64_t
+	err := check(C.vpqc_encrypt_file(ptr(pk.b), C.size_t(len(pk.b)), ptr(aad), C.size_t(len(aad)), in, out, &n))
+	return uint64(n), err
+}
+
+// DecryptFile decrypts a file produced by EncryptFile. The output file appears (mode 0600 on
+// Unix) only if the whole stream verifies; errors.Is(err, ErrDecryption) otherwise.
+func DecryptFile(sk SecretKey, inPath, outPath string, aad []byte) (uint64, error) {
+	in, out := C.CString(inPath), C.CString(outPath)
+	defer C.free(unsafe.Pointer(in))
+	defer C.free(unsafe.Pointer(out))
+	var n C.uint64_t
+	err := check(C.vpqc_decrypt_file(ptr(sk.b), C.size_t(len(sk.b)), ptr(aad), C.size_t(len(aad)), in, out, &n))
+	return uint64(n), err
 }
 
 // ABIVersion returns the native ABI version (major<<16 | minor).

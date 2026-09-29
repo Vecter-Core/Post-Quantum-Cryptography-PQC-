@@ -36,6 +36,26 @@ int main(void) {
     printf("signature: %zu bytes\n", sig.len);
     vpqc_buf_free(&spk); vpqc_buf_free(&ssk); vpqc_buf_free(&sig);
 
+    /* Streaming file encryption */
+    {
+        vpqc_buf fpk = {0}, fsk = {0};
+        CHECK(vpqc_encryption_keygen(VPQC_PROFILE_STANDARD, &fpk, &fsk) == VPQC_OK);
+        const char *in = "vpqc-c-smoke.in", *enc = "vpqc-c-smoke.vpqc", *out = "vpqc-c-smoke.out";
+        FILE *f = fopen(in, "wb");
+        CHECK(f != NULL);
+        for (int i = 0; i < 200000; i++) fputc(i & 0xff, f);
+        fclose(f);
+        uint64_t n = 0;
+        CHECK(vpqc_encrypt_file(fpk.ptr, fpk.len, (const uint8_t *)"c", 1, in, enc, &n) == VPQC_OK && n == 200000);
+        CHECK(vpqc_decrypt_file(fsk.ptr, fsk.len, (const uint8_t *)"c", 1, enc, out, &n) == VPQC_OK && n == 200000);
+        CHECK(vpqc_decrypt_file(fsk.ptr, fsk.len, (const uint8_t *)"x", 1, enc, "vpqc-c-smoke.bad", NULL) == VPQC_ERR_DECRYPTION_FAILED);
+        CHECK(fopen("vpqc-c-smoke.bad", "rb") == NULL);
+        CHECK(vpqc_encrypt_file(fpk.ptr, fpk.len, NULL, 0, "vpqc-no-such-file", enc, NULL) == VPQC_ERR_IO);
+        remove(in); remove(enc); remove(out);
+        vpqc_buf_free(&fpk); vpqc_buf_free(&fsk);
+        puts("stream file: OK");
+    }
+
     CHECK(strcmp(vpqc_error_message(VPQC_ERR_DECRYPTION_FAILED), "decryption failed") == 0);
     puts("C smoke test OK");
     return 0;

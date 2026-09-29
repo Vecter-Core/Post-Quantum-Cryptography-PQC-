@@ -6,6 +6,7 @@ Pre-release and unaudited: do not protect real secrets with it yet.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from typing import Dict, List, Tuple, Union
 
 from . import _vpqc
@@ -30,6 +31,10 @@ __all__ = [
     "sign",
     "verify",
     "is_valid",
+    "encrypt_file",
+    "decrypt_file",
+    "StreamEncryptor",
+    "StreamDecryptor",
     "profiles",
     "VpqcError",
     "DecryptionError",
@@ -173,6 +178,62 @@ def is_valid(
     except VerificationError:
         return False
     return True
+
+
+PathLike = Union[str, "os.PathLike[str]"]
+
+
+def encrypt_file(
+    public_key: PublicKey, input_path: PathLike, output_path: PathLike, *, aad: BytesLike = b""
+) -> int:
+    """Encrypt a file of any size in constant memory (streaming format, ADR-0007).
+
+    The output file is replaced atomically. Returns the number of plaintext bytes.
+    Raises ``OSError`` for file errors.
+    """
+    return _vpqc.encrypt_file(public_key.data, _b(aad), os.fspath(input_path), os.fspath(output_path))
+
+
+def decrypt_file(
+    secret_key: SecretKey, input_path: PathLike, output_path: PathLike, *, aad: BytesLike = b""
+) -> int:
+    """Decrypt a file produced by :func:`encrypt_file`.
+
+    The output file appears (mode 0600 on Unix) only if the whole stream verifies; on
+    :class:`DecryptionError` nothing is written. Returns the number of plaintext bytes.
+    """
+    return _vpqc.decrypt_file(secret_key.data, _b(aad), os.fspath(input_path), os.fspath(output_path))
+
+
+class StreamEncryptor:
+    """Incremental encryption for data that arrives in pieces (sockets, uploads, pipes).
+
+    ``update()`` returns ciphertext to append (the first call includes the header);
+    ``finalize()`` returns the last piece. The result is readable by :func:`decrypt_file`.
+    """
+
+    def __init__(self, public_key: PublicKey, *, aad: BytesLike = b"") -> None:
+        self._inner = _vpqc.StreamEncryptor(public_key.data, _b(aad))
+
+    def update(self, data: BytesLike) -> bytes:
+        return self._inner.update(_b(data))
+
+    def finalize(self) -> bytes:
+        return self._inner.finalize()
+
+
+class StreamDecryptor:
+    """Incremental decryption. Plaintext returned by ``update()`` must be discarded if a later
+    call raises; only a successful ``finalize()`` proves the stream is complete and intact."""
+
+    def __init__(self, secret_key: SecretKey, *, aad: BytesLike = b"") -> None:
+        self._inner = _vpqc.StreamDecryptor(secret_key.data, _b(aad))
+
+    def update(self, data: BytesLike) -> bytes:
+        return self._inner.update(_b(data))
+
+    def finalize(self) -> bytes:
+        return self._inner.finalize()
 
 
 def profiles() -> List[Dict[str, str]]:

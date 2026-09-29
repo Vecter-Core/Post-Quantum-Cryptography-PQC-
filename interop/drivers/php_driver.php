@@ -43,6 +43,12 @@ try {
         case 'verify': // verify PUBFILE CTX SIG IN
             Vpqc::verify(PublicKey::fromText(file_get_contents($a[0])), file_get_contents($a[3]), $a[1], file_get_contents($a[2]));
             break;
+        case 'encrypt-file': // encrypt-file PUBFILE AAD IN OUT
+            Vpqc::encryptFile(PublicKey::fromText(file_get_contents($a[0])), $a[2], $a[3], $a[1]);
+            break;
+        case 'decrypt-file': // decrypt-file SECFILE AAD IN OUT
+            Vpqc::decryptFile(SecretKey::fromText(file_get_contents($a[0])), $a[2], $a[3], $a[1]);
+            break;
         default:
             throw new InvalidArgumentException("unknown command $cmd");
     }

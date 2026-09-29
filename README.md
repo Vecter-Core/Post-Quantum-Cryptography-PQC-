@@ -20,6 +20,13 @@ echo "hello" | cargo run -q -p vpqc-cli -- seal --to alice.pub -o msg.vpqc
 cargo run -q -p vpqc-cli -- open --key alice.vpqc-secret msg.vpqc
 ```
 
+Tệp lớn (sao lưu, ảnh đĩa) dùng dạng streaming, bộ nhớ không đổi:
+
+```sh
+vpqc encrypt --to alice.pub -o backup.tar.vpqc backup.tar
+vpqc decrypt --key alice.vpqc-secret -o backup.tar backup.tar.vpqc   # chỉ ghi tệp nếu toàn bộ hợp lệ
+```
+
 ## Thư viện theo ngôn ngữ
 
 | Ngôn ngữ | Thư mục | Cách nối | Trạng thái |

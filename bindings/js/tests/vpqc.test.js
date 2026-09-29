@@ -76,3 +76,38 @@ test("interop: Node output opened by the Rust CLI", { skip: !process.env.VPQC_CL
   const out = execFileSync(cli, ["open", "--key", path.join(dir, "k.vpqc-secret"), "--aad", "x", path.join(dir, "m.sealed")]);
   assert.equal(out.toString(), "from node");
 });
+
+test("incremental stream encryption", () => {
+  const keys = vpqc.generateEncryptionKeypair();
+  const data = new Uint8Array(500_000).map((_, i) => (i * 13) & 0xff);
+  const enc = new vpqc.StreamEncryptor(keys.publicKey, enc8("ctx"));
+  const parts = [];
+  for (let i = 0; i < data.length; i += 20_000) parts.push(enc.push(data.subarray(i, i + 20_000)));
+  parts.push(enc.finish());
+  const ct = concat(parts);
+  const dec = new vpqc.StreamDecryptor(keys.secretKey, enc8("ctx"));
+  const out = [];
+  for (let i = 0; i < ct.length; i += 7_777) out.push(dec.push(ct.subarray(i, i + 7_777)));
+  out.push(dec.finish());
+  assert.deepEqual(concat(out), data);
+
+  const cut = new vpqc.StreamDecryptor(keys.secretKey, enc8("ctx"));
+  cut.push(ct.subarray(0, ct.length - 5));
+  throwsCode(() => cut.finish(), "DECRYPTION_FAILED");
+  const wrong = new vpqc.StreamDecryptor(keys.secretKey, enc8("other"));
+  throwsCode(() => { wrong.push(ct); wrong.finish(); }, "DECRYPTION_FAILED");
+});
+
+function enc8(s) {
+  return new TextEncoder().encode(s);
+}
+
+function concat(parts) {
+  const out = new Uint8Array(parts.reduce((n, p) => n + p.length, 0));
+  let o = 0;
+  for (const p of parts) {
+    out.set(p, o);
+    o += p.length;
+  }
+  return out;
+}
