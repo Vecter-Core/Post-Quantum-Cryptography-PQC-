@@ -19,3 +19,17 @@ cargo run -p vpqc-cli -- keygen --purpose encrypt --out alice
 echo "hello" | cargo run -q -p vpqc-cli -- seal --to alice.pub -o msg.vpqc
 cargo run -q -p vpqc-cli -- open --key alice.vpqc-secret msg.vpqc
 ```
+
+## Thư viện theo ngôn ngữ
+
+| Ngôn ngữ | Thư mục | Cách nối | Trạng thái |
+|----------|---------|----------|-----------|
+| Rust | `crates/vpqc` | trực tiếp | có |
+| CLI | `crates/vpqc-cli` | trực tiếp | có |
+| C / C++ | `crates/vpqc-ffi` | C ABI | có |
+| Python | `bindings/python` | PyO3 | có |
+| JavaScript / TypeScript | `bindings/js` | WebAssembly | có |
+| Go | `bindings/go` | cgo + C ABI | có |
+| Java/Kotlin, .NET, Swift, ... | | C ABI | chưa |
+
+Kiểm tra tương tác giữa các thư viện: `interop/run.sh` (xem `docs/ROADMAP.md`).

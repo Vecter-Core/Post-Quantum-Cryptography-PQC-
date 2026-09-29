@@ -21,7 +21,13 @@
 | Profile `high` (P-384 + ML-KEM-1024), `archive` (SLH-DSA), `fips` (aws-lc-rs) | **Chưa** | Cần crate P-384, SLH-DSA (RustCrypto còn ở bản RC), backend aws-lc-rs |
 | Backend RustCrypto làm backend chạy thật (`no_std`, WASM) | **Chưa** | Hiện chỉ dùng cho test vi sai; các crate hiện dùng `std` |
 | KAT ACVP cho ML-KEM-1024 / ML-DSA, fuzzing, đo constant-time | **Chưa** | Giai đoạn 1 còn lại / giai đoạn 5 |
-| C ABI, Python, JS/WASM và các vỏ ngôn ngữ khác | **Chưa** | Giai đoạn 2 |
+| C ABI (`vpqc-ffi`, header `vpqc.h`) | Xong | Panic không vượt biên; buffer xoá bộ nhớ khi giải phóng; ASan/UBSan/LSan sạch; kiểm cả C++ và liên kết tĩnh |
+| Python (PyO3 + maturin, wheel `abi3` ≥ 3.9) | Xong | `bindings/python`: kiểu dữ liệu, type hints, hệ exception; 13 test |
+| JavaScript/TypeScript (WASM, Node + web) | Xong | `bindings/js`: ~570 KB wasm, ngẫu nhiên từ `crypto.getRandomValues`; 7 test |
+| Go (cgo, liên kết tĩnh) | Xong | `bindings/go`: `errors.Is`, `-race` sạch, khoá bí mật không in ra qua `fmt`; mới thử trên Linux |
+| **Test tương tác chéo ngôn ngữ** (`interop/run.sh`) | Xong | CLI Rust, Python, Node, Go: 776 kiểm tra, 0 lỗi (mọi tổ hợp sinh khoá × mã hoá × giải mã, ký × xác minh, sai context, dữ liệu bị sửa) |
+| Java/Kotlin (JCA), .NET, Swift, PHP, Ruby, Dart | **Chưa** | Giai đoạn 3; dùng chung C ABI |
+| Phát hành gói (PyPI wheel đa nền tảng, npm, thư viện C dựng sẵn cho Go) | **Chưa** | Hiện phải build từ mã nguồn; CI đã khai báo nhưng mới chạy thử trên Linux |
 | Kiểm toán bên ngoài | **Chưa** | **Chưa dùng cho bí mật thật** |
 
 Ghi chú lệch so với sơ đồ mục 3: `vpqc-policy` hiện nằm trong `vpqc-core` (module `profile`);

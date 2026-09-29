@@ -1,0 +1,84 @@
+#!/bin/bash
+# Cross-language interoperability suite.
+#
+# For every profile and every combination of (key generator, sealer, opener) and
+# (key generator, signer, verifier) across the Rust CLI, Python, Node.js (WASM) and Go,
+# data produced by one implementation must be accepted by all others, and tampered
+# data / wrong contexts must be rejected by all.
+#
+# Environment: VPQC_CLI (Rust CLI), PYTHON (interpreter with vpqc installed), NODE, GO_DRIVER.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+VPQC_CLI="${VPQC_CLI:-$ROOT/target/release/vpqc}"
+PYTHON="${PYTHON:-python3}"
+NODE="${NODE:-node}"
+GO_DRIVER="${GO_DRIVER:-$ROOT/target/interop-go}"
+WORK="$(mktemp -d)"
+trap 'rm -rf "$WORK"' EXIT
+
+# Each implementation is a command prefix; all speak the same protocol as the CLI wrappers below.
+cli() { # cli keygen|seal|open|sign|verify ...
+  local c="$1"; shift
+  case "$c" in
+    keygen) "$VPQC_CLI" keygen --purpose "$1" --profile "$2" --out "$3" --force 2>/dev/null
+            mv "$3.vpqc-secret" "$3.sec" ;;
+    seal)   "$VPQC_CLI" seal --to "$1" --aad "$2" -o "$4" "$3" ;;
+    open)   "$VPQC_CLI" open --key "$1" --aad "$2" -o "$4" "$3" ;;
+    sign)   "$VPQC_CLI" sign --key "$1" --context "$2" -o "$4" "$3" ;;
+    verify) "$VPQC_CLI" verify --key "$1" --context "$2" --sig "$3" "$4" 2>/dev/null ;;
+  esac
+}
+py()   { "$PYTHON" "$ROOT/interop/drivers/py_driver.py" "$@"; }
+node_() { "$NODE" "$ROOT/interop/drivers/node_driver.js" "$@"; }
+go_() { # go driver takes numeric profile ids
+  if [ "$1" = keygen ]; then
+    local id; case "$3" in standard) id=1;; fast-auth) id=2;; cnsa2) id=3;; esac
+    "$GO_DRIVER" keygen "$2" "$id" "$4"
+  else "$GO_DRIVER" "$@"; fi
+}
+run() { # run IMPL CMD ARGS...
+  local impl="$1"; shift
+  case "$impl" in cli) cli "$@";; py) py "$@";; node) node_ "$@";; go) go_ "$@";; esac
+}
+
+IMPLS=(cli py node go)
+PROFILES=(standard fast-auth cnsa2)
+fail=0; total=0
+expect_ok()   { total=$((total+1)); if ! "$@" 2>"$WORK/err"; then echo "FAIL (expected success): $*"; cat "$WORK/err"; fail=$((fail+1)); fi; }
+expect_fail() { total=$((total+1)); if "$@" 2>/dev/null; then echo "FAIL (expected rejection): $*"; fail=$((fail+1)); fi; }
+
+head -c 3000 /dev/urandom > "$WORK/msg.bin"
+for profile in "${PROFILES[@]}"; do
+  for g in "${IMPLS[@]}"; do
+    run "$g" keygen encrypt "$profile" "$WORK/enc-$g"
+    run "$g" keygen sign "$profile" "$WORK/sig-$g"
+    for s in "${IMPLS[@]}"; do
+      # Encryption: key from g, sealed by s, opened by every implementation.
+      run "$s" seal "$WORK/enc-$g.pub" "ctx-1" "$WORK/msg.bin" "$WORK/sealed"
+      for o in "${IMPLS[@]}"; do
+        rm -f "$WORK/plain"
+        expect_ok run "$o" open "$WORK/enc-$g.sec" "ctx-1" "$WORK/sealed" "$WORK/plain"
+        cmp -s "$WORK/plain" "$WORK/msg.bin" || { echo "FAIL: plaintext differs ($g,$s,$o,$profile)"; fail=$((fail+1)); }
+        expect_fail run "$o" open "$WORK/enc-$g.sec" "wrong-ctx" "$WORK/sealed" "$WORK/plain2"
+      done
+      # Signatures: key from g, signed by s, verified by every implementation.
+      run "$s" sign "$WORK/sig-$g.sec" "app/v1" "$WORK/msg.bin" "$WORK/signature"
+      for o in "${IMPLS[@]}"; do
+        expect_ok   run "$o" verify "$WORK/sig-$g.pub" "app/v1" "$WORK/signature" "$WORK/msg.bin"
+        expect_fail run "$o" verify "$WORK/sig-$g.pub" "app/v2" "$WORK/signature" "$WORK/msg.bin"
+      done
+    done
+  done
+  echo "profile $profile: done"
+done
+
+# Tampered data is rejected everywhere.
+cp "$WORK/signature" "$WORK/bad.sig"; printf '\x00' | dd of="$WORK/bad.sig" bs=1 seek=100 conv=notrunc 2>/dev/null
+cp "$WORK/msg.bin" "$WORK/bad.msg"; printf '\x01' | dd of="$WORK/bad.msg" bs=1 seek=5 conv=notrunc 2>/dev/null
+for o in "${IMPLS[@]}"; do
+  expect_fail run "$o" verify "$WORK/sig-$o.pub" "app/v1" "$WORK/bad.sig" "$WORK/msg.bin"
+  expect_fail run "$o" verify "$WORK/sig-cli.pub" "app/v1" "$WORK/signature" "$WORK/bad.msg"
+done
+
+echo "interop checks: $total, failures: $fail"
+[ "$fail" -eq 0 ]

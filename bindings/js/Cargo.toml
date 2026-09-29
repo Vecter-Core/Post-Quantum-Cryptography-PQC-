@@ -1,0 +1,30 @@
+[package]
+name = "vpqc-wasm"
+description = "WebAssembly bindings for vpqc (browser, Node.js, Deno, edge runtimes)"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/Vecter-Core/Post-Quantum-Cryptography-PQC-"
+publish = false
+
+[lib]
+name = "vpqc_wasm"
+crate-type = ["cdylib"]
+
+[dependencies]
+vpqc = { path = "../../crates/vpqc" }
+wasm-bindgen = "=0.2.129"
+js-sys = "0.3"
+# Web Crypto backed randomness (this crate already depends on wasm-bindgen unconditionally).
+getrandom = { version = "0.4", features = ["wasm_js"] }
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+overflow-checks = true
+
+[lints.rust]
+unsafe_code = "forbid"

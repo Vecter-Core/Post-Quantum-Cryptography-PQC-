@@ -1,0 +1,29 @@
+[package]
+name = "vpqc-python"
+description = "Python bindings for vpqc (native extension module vpqc._vpqc)"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/Vecter-Core/Post-Quantum-Cryptography-PQC-"
+publish = false
+
+[lib]
+name = "_vpqc"
+crate-type = ["cdylib"]
+
+[dependencies]
+vpqc = { path = "../../crates/vpqc" }
+vpqc-core = { path = "../../crates/vpqc-core" }
+pyo3 = { version = "0.29", features = ["abi3-py39"] }
+
+[features]
+extension-module = ["pyo3/extension-module"]
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+overflow-checks = true
+
+[lints.rust]
+unsafe_code = "forbid"

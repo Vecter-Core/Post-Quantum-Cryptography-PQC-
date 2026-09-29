@@ -40,3 +40,57 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: EmbarkStudios/cargo-deny-action@v2
+
+  bindings:
+    name: bindings + interop
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            bindings/python
+            bindings/js
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-bindgen-cli@0.2.129
+
+      # Native artifacts
+      - run: cargo build --release -p vpqc-cli -p vpqc-ffi
+
+      # C / C++ (ASan/UBSan on the smoke test)
+      - run: sh crates/vpqc-ffi/tests/c/run.sh
+
+      # Python
+      - run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install maturin pytest
+          (cd bindings/python && maturin develop --release && VPQC_CLI="$PWD/../../target/release/vpqc" pytest -q)
+
+      # JavaScript / WebAssembly
+      - run: |
+          (cd bindings/js && sh scripts/build.sh && VPQC_CLI="$PWD/../../target/release/vpqc" node --test tests/*.test.js)
+
+      # Go
+      - run: |
+          (cd bindings/go && go vet ./... && go test -race -count=1 ./... && go build -o ../../target/interop-go ./cmd/interop)
+
+      # Cross-language interoperability matrix
+      - run: |
+          . .venv/bin/activate
+          PYTHON="$(which python)" ./interop/run.sh

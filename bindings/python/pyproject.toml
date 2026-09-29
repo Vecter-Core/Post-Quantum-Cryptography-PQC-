@@ -1,0 +1,31 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "vpqc"
+version = "0.0.1"
+description = "Post-quantum cryptography with safe defaults (hybrid X25519+ML-KEM-768, ML-DSA). Pre-release, unaudited."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.9"
+keywords = ["post-quantum", "pqc", "ml-kem", "ml-dsa", "hybrid", "cryptography"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Rust",
+    "Topic :: Security :: Cryptography",
+    "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.maturin]
+python-source = "python"
+module-name = "vpqc._vpqc"
+features = ["extension-module"]
+strip = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
