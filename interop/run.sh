@@ -7,6 +7,9 @@
 # data / wrong contexts must be rejected by all.
 #
 # Environment: VPQC_CLI (Rust CLI), PYTHON (interpreter with vpqc installed), NODE, GO_DRIVER.
+# Set INTEROP_PHP=1 / INTEROP_RUBY=1 (needs the ffi gem) to include PHP / Ruby.
+# Set INTEROP_JAVA=1 to include Java (needs `mvn package -DskipTests` in bindings/java first;
+# slower because every call starts a JVM).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VPQC_CLI="${VPQC_CLI:-$ROOT/target/release/vpqc}"
@@ -36,12 +39,28 @@ go_() { # go driver takes numeric profile ids
     "$GO_DRIVER" keygen "$2" "$id" "$4"
   else "$GO_DRIVER" "$@"; fi
 }
+JAVA_OUT=""
+java_() {
+  "${JAVA:-java}" --enable-preview --enable-native-access=ALL-UNNAMED -XX:TieredStopAtLevel=1 -Xshare:auto \
+    -Dvpqc.library.path="$ROOT/target/release" -cp "$JAVA_OUT:$ROOT/bindings/java/target/classes" JavaDriver "$@" 2> >(grep -v JAVA_TOOL_OPTIONS >&2)
+}
+php_()  { VPQC_LIBRARY="$ROOT/target/release/libvpqc_ffi.so" "${PHP:-php}" -d ffi.enable=1 "$ROOT/interop/drivers/php_driver.php" "$@"; }
+ruby_() { VPQC_LIBRARY="$ROOT/target/release/libvpqc_ffi.so" "${RUBY:-ruby}" "$ROOT/interop/drivers/ruby_driver.rb" "$@"; }
 run() { # run IMPL CMD ARGS...
   local impl="$1"; shift
-  case "$impl" in cli) cli "$@";; py) py "$@";; node) node_ "$@";; go) go_ "$@";; esac
+  case "$impl" in cli) cli "$@";; py) py "$@";; node) node_ "$@";; go) go_ "$@";; java) java_ "$@";; php) php_ "$@";; ruby) ruby_ "$@";; esac
 }
 
 IMPLS=(cli py node go)
+[ "${INTEROP_PHP:-0}" = 1 ] && IMPLS+=(php)
+[ "${INTEROP_RUBY:-0}" = 1 ] && IMPLS+=(ruby)
+if [ "${INTEROP_JAVA:-0}" = 1 ]; then
+  JAVA_OUT="$WORK/java-driver"
+  mkdir -p "$JAVA_OUT"
+  "${JAVAC:-javac}" --enable-preview --release "${JAVA_RELEASE:-21}" -cp "$ROOT/bindings/java/target/classes" \
+    -d "$JAVA_OUT" "$ROOT/interop/drivers/JavaDriver.java" 2>&1 | grep -v -e JAVA_TOOL_OPTIONS -e "^Note:" || true
+  IMPLS+=(java)
+fi
 PROFILES=(standard fast-auth cnsa2)
 fail=0; total=0
 expect_ok()   { total=$((total+1)); if ! "$@" 2>"$WORK/err"; then echo "FAIL (expected success): $*"; cat "$WORK/err"; fail=$((fail+1)); fi; }

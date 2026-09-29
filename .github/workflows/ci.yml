@@ -65,6 +65,18 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.24"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: ffi
+          ini-values: ffi.enable=1
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
       - uses: taiki-e/install-action@v2
         with:
           tool: wasm-bindgen-cli@0.2.129
@@ -90,7 +102,20 @@ jobs:
       - run: |
           (cd bindings/go && go vet ./... && go test -race -count=1 ./... && go build -o ../../target/interop-go ./cmd/interop)
 
-      # Cross-language interoperability matrix
+      # Java (Foreign Function & Memory API, JDK 21 preview)
+      - run: |
+          (cd bindings/java && mvn -B test && mvn -B -q package -DskipTests)
+
+      # PHP (FFI)
+      - run: |
+          VPQC_LIBRARY="$PWD/target/release/libvpqc_ffi.so" php -d ffi.enable=1 bindings/php/tests/run.php
+
+      # Ruby (ffi gem)
+      - run: |
+          gem install ffi --no-document
+          VPQC_LIBRARY="$PWD/target/release/libvpqc_ffi.so" ruby -Ibindings/ruby/lib bindings/ruby/test/test_vpqc.rb
+
+      # Cross-language interoperability matrix (all implementations)
       - run: |
           . .venv/bin/activate
-          PYTHON="$(which python)" ./interop/run.sh
+          PYTHON="$(which python)" INTEROP_JAVA=1 INTEROP_PHP=1 INTEROP_RUBY=1 ./interop/run.sh

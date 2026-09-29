@@ -30,6 +30,9 @@ cargo run -q -p vpqc-cli -- open --key alice.vpqc-secret msg.vpqc
 | Python | `bindings/python` | PyO3 | có |
 | JavaScript / TypeScript | `bindings/js` | WebAssembly | có |
 | Go | `bindings/go` | cgo + C ABI | có |
-| Java/Kotlin, .NET, Swift, ... | | C ABI | chưa |
+| Java | `bindings/java` | Panama FFM + C ABI | có |
+| PHP | `bindings/php` | FFI + C ABI | có |
+| Ruby | `bindings/ruby` | ffi gem + C ABI | có |
+| .NET, Swift, Kotlin/Android, Dart | | C ABI | chưa |
 
 Kiểm tra tương tác giữa các thư viện: `interop/run.sh` (xem `docs/ROADMAP.md`).

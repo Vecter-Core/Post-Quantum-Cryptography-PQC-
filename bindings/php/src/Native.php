@@ -1,0 +1,115 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Vecter\Vpqc;
+
+use FFI;
+
+/**
+ * Bindings to the C ABI (vpqc.h) through PHP's FFI extension.
+ *
+ * The library is located through the VPQC_LIBRARY environment variable (full path to
+ * libvpqc_ffi.so / .dylib / vpqc_ffi.dll) or the default loader path.
+ *
+ * @internal
+ */
+final class Native
+{
+    public const KEY_PUBLIC = 1;
+    public const KEY_SECRET = 2;
+
+    private const CDEF = <<<'C'
+typedef struct vpqc_buf { unsigned char *ptr; size_t len; } vpqc_buf;
+unsigned int vpqc_abi_version(void);
+const char *vpqc_error_message(int code);
+void vpqc_buf_free(vpqc_buf *buf);
+int vpqc_encryption_keygen(int profile, vpqc_buf *public_out, vpqc_buf *secret_out);
+int vpqc_signing_keygen(int profile, vpqc_buf *public_out, vpqc_buf *secret_out);
+int vpqc_seal(const char *pk, size_t pk_len, const char *pt, size_t pt_len, const char *aad, size_t aad_len, vpqc_buf *out);
+int vpqc_open(const char *sk, size_t sk_len, const char *sealed, size_t sealed_len, const char *aad, size_t aad_len, vpqc_buf *out);
+int vpqc_sign(const char *sk, size_t sk_len, const char *msg, size_t msg_len, const char *ctx, size_t ctx_len, vpqc_buf *out);
+int vpqc_verify(const char *pk, size_t pk_len, const char *msg, size_t msg_len, const char *ctx, size_t ctx_len, const char *sig, size_t sig_len);
+int vpqc_key_to_text(int kind, const char *key, size_t key_len, vpqc_buf *out);
+int vpqc_key_from_text(int kind, const char *text, size_t text_len, vpqc_buf *out);
+C;
+
+    private static ?FFI $ffi = null;
+
+    private static function ffi(): FFI
+    {
+        if (self::$ffi === null) {
+            $lib = getenv('VPQC_LIBRARY');
+            if ($lib === false || $lib === '') {
+                $lib = PHP_OS_FAMILY === 'Darwin' ? 'libvpqc_ffi.dylib'
+                    : (PHP_OS_FAMILY === 'Windows' ? 'vpqc_ffi.dll' : 'libvpqc_ffi.so');
+            }
+            self::$ffi = FFI::cdef(self::CDEF, $lib);
+        }
+        return self::$ffi;
+    }
+
+    private static function check(int $rc): void
+    {
+        if ($rc !== 0) {
+            // PHP FFI converts a returned `const char *` to a PHP string automatically.
+            $msg = (string) self::ffi()->vpqc_error_message($rc);
+            throw VpqcException::fromCode($rc, $msg);
+        }
+    }
+
+    /** Copy a native buffer into a PHP string, then free (zeroize) it. */
+    private static function take(\FFI\CData $buf): string
+    {
+        $out = $buf->len > 0 ? FFI::string($buf->ptr, $buf->len) : '';
+        self::ffi()->vpqc_buf_free(FFI::addr($buf));
+        return $out;
+    }
+
+    public static function abiVersion(): int
+    {
+        return self::ffi()->vpqc_abi_version();
+    }
+
+    public static function keygen(int $profile, bool $encrypt): KeyPair
+    {
+        $ffi = self::ffi();
+        $pub = $ffi->new('vpqc_buf');
+        $sec = $ffi->new('vpqc_buf');
+        $rc = $encrypt
+            ? $ffi->vpqc_encryption_keygen($profile, FFI::addr($pub), FFI::addr($sec))
+            : $ffi->vpqc_signing_keygen($profile, FFI::addr($pub), FFI::addr($sec));
+        self::check($rc);
+        return new KeyPair(PublicKey::fromBytes(self::take($pub)), SecretKey::fromBytes(self::take($sec)));
+    }
+
+    /** seal / open / sign share the shape (a, b, c) -> buffer. */
+    public static function call3(string $fn, string $a, string $b, string $c): string
+    {
+        $ffi = self::ffi();
+        $out = $ffi->new('vpqc_buf');
+        self::check($ffi->$fn($a, strlen($a), $b, strlen($b), $c, strlen($c), FFI::addr($out)));
+        return self::take($out);
+    }
+
+    public static function verify(string $pk, string $msg, string $ctx, string $sig): void
+    {
+        self::check(self::ffi()->vpqc_verify($pk, strlen($pk), $msg, strlen($msg), $ctx, strlen($ctx), $sig, strlen($sig)));
+    }
+
+    public static function keyToText(int $kind, string $key): string
+    {
+        $ffi = self::ffi();
+        $out = $ffi->new('vpqc_buf');
+        self::check($ffi->vpqc_key_to_text($kind, $key, strlen($key), FFI::addr($out)));
+        return self::take($out);
+    }
+
+    public static function keyFromText(int $kind, string $text): string
+    {
+        $ffi = self::ffi();
+        $out = $ffi->new('vpqc_buf');
+        self::check($ffi->vpqc_key_from_text($kind, $text, strlen($text), FFI::addr($out)));
+        return self::take($out);
+    }
+}

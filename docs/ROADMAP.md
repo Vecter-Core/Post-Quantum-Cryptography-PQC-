@@ -25,8 +25,11 @@
 | Python (PyO3 + maturin, wheel `abi3` ≥ 3.9) | Xong | `bindings/python`: kiểu dữ liệu, type hints, hệ exception; 13 test |
 | JavaScript/TypeScript (WASM, Node + web) | Xong | `bindings/js`: ~570 KB wasm, ngẫu nhiên từ `crypto.getRandomValues`; 7 test |
 | Go (cgo, liên kết tĩnh) | Xong | `bindings/go`: `errors.Is`, `-race` sạch, khoá bí mật không in ra qua `fmt`; mới thử trên Linux |
-| **Test tương tác chéo ngôn ngữ** (`interop/run.sh`) | Xong | CLI Rust, Python, Node, Go: 776 kiểm tra, 0 lỗi (mọi tổ hợp sinh khoá × mã hoá × giải mã, ký × xác minh, sai context, dữ liệu bị sửa) |
-| Java/Kotlin (JCA), .NET, Swift, PHP, Ruby, Dart | **Chưa** | Giai đoạn 3; dùng chung C ABI |
+| Java (Panama FFM, JDK 21 preview / 22+ final) | Xong | `bindings/java`: Maven, `DecryptionException`…, `SecretKey.destroy()`; 10 test. **Chưa có JCA Provider** (`KeyPairGenerator`/`Signature`) |
+| PHP (FFI), Ruby (ffi gem) | Xong | `bindings/php` (29 kiểm tra), `bindings/ruby` (9 test) |
+| **Test tương tác chéo ngôn ngữ** (`interop/run.sh`) | Xong | CLI Rust, Python, Node, Go, Java, PHP, Ruby: **4130 kiểm tra, 0 lỗi** (mọi tổ hợp sinh khoá × mã hoá × giải mã, ký × xác minh, sai context, dữ liệu bị sửa) |
+| Parser: fuzz nhẹ (>600.000 đầu vào ngẫu nhiên/biến dị) | Xong | `vpqc-format/tests/robustness.rs`; fuzz theo độ phủ (`cargo-fuzz`) vẫn chưa |
+| .NET, Swift, Kotlin (JCA), Dart | **Chưa** | Chưa có toolchain trong môi trường này để kiểm chứng; dùng chung C ABI |
 | Phát hành gói (PyPI wheel đa nền tảng, npm, thư viện C dựng sẵn cho Go) | **Chưa** | Hiện phải build từ mã nguồn; CI đã khai báo nhưng mới chạy thử trên Linux |
 | Kiểm toán bên ngoài | **Chưa** | **Chưa dùng cho bí mật thật** |
 
