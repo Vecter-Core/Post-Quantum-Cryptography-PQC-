@@ -14,6 +14,7 @@ mod certs;
 mod model;
 mod output;
 mod rules;
+mod vpn;
 mod walk;
 
 pub use model::{Family, Finding, Purpose, Report, Risk, Source};

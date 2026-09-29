@@ -96,7 +96,7 @@ jobs:
       - run: python3 tools/ct-check/grind.py
 
   jose:
-    name: JOSE, COSE, X.509, SSH and key protection interop (jose, cbor2 + OpenSSL, cryptography, Node.js, OpenSSH, argon2-cffi + libsodium)
+    name: JOSE, COSE, X.509, SSH, WireGuard and key protection interop (jose, cbor2 + OpenSSL, cryptography, Node.js, OpenSSH, WireGuard, argon2-cffi + libsodium)
     runs-on: ubuntu-latest
     needs: test
     steps:
@@ -117,8 +117,10 @@ jobs:
       - run: PYTHON=python ./interop/cose.sh
       - run: PYTHON=python ./interop/keyprotect.sh
       # Real OpenSSH servers, run unprivileged on loopback.
-      - run: sudo apt-get update && sudo apt-get install -y openssh-server
+      - run: sudo apt-get update && sudo apt-get install -y openssh-server wireguard-tools wireguard-go
       - run: ./interop/ssh.sh
+      # Real WireGuard peers on loopback (kernel WireGuard, else wireguard-go); needs root.
+      - run: sudo ./interop/wireguard.sh
 
   deny:
     name: supply chain

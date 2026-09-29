@@ -5,6 +5,7 @@ mod jose;
 mod kms;
 mod secret;
 mod ssh;
+mod wg;
 mod x509;
 
 use std::fs;
@@ -289,6 +290,11 @@ enum Command {
     Cwt {
         #[command(subcommand)]
         command: cose::CwtCommand,
+    },
+    /// WireGuard: post-quantum pre-shared keys, sealed to the peer's vpqc key.
+    Wg {
+        #[command(subcommand)]
+        command: wg::WgCommand,
     },
     /// SSH: check whether a server offers a post-quantum key exchange.
     Ssh {
@@ -617,6 +623,7 @@ fn run(cli: Cli) -> CliResult {
         Command::Jwt { command } => jose::jwt(command),
         Command::X509 { command } => x509::run(command),
         Command::Ssh { command } => ssh::run(command),
+        Command::Wg { command } => wg::run(command),
         Command::Cose { command } => cose::cose(command),
         Command::Cwt { command } => cose::cwt(command),
     }

@@ -112,6 +112,17 @@ vpqc scan /etc/ssh                            # KexAlgorithms nào đang tắt K
 Dùng KEX lai sẵn có của OpenSSH (`mlkem768x25519-sha256`), không tự làm SSH; crate `vpqc-ssh`
 (ADR-0011), đã kiểm với `sshd` thật.
 
+## VPN hậu lượng tử (WireGuard, IPsec)
+
+```sh
+vpqc wg psk-seal --to bob.pub --wg-local "$A" --wg-peer "$B" --psk-out wg0.psk --sign-key alice.vpqc-secret -o for-bob
+vpqc wg psk-open --key bob.vpqc-secret --from alice.pub --wg-local "$B" --wg-peer "$A" -o wg0.psk for-bob
+vpqc scan /etc/wireguard /etc/swanctl      # peer thiếu PresharedKey, IKEv2 thiếu ML-KEM
+```
+
+PSK của WireGuard được chuyển bằng sealed box lai, có chữ ký người gửi; đã kiểm bằng handshake
+WireGuard thật (ADR-0014).
+
 ## TLS lai và HPKE
 
 ```sh

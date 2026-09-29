@@ -161,6 +161,16 @@ fn analyse_bytes(display: &str, e: &str, bytes: &[u8], options: &Options, report
     if text.contains("-----BEGIN ") && matches!(e, "pem" | "crt" | "cer" | "key" | "pub") {
         return;
     }
+    if let Some(dialect) = crate::vpn::dialect(display, text) {
+        let rest = crate::vpn::scan(display, text, dialect, &mut report.findings);
+        scan_text(
+            display,
+            &rest,
+            options.include_comments,
+            &mut report.findings,
+        );
+        return;
+    }
     if is_ssh_config(display) {
         let rest = scan_ssh_config(display, text, &mut report.findings);
         scan_text(
