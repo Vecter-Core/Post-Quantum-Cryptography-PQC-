@@ -22,7 +22,8 @@
 | Profile `archive` (SLH-DSA) | **Hoãn có chủ đích** | Xem ADR-0006: chỉ có `slh-dsa` bản RC, chưa kiểm toán, không có bản thứ hai để đối chiếu |
 | Profile `fips` (backend aws-lc-rs, FIPS 140-3) | **Chưa** | Cần backend aws-lc-rs |
 | Backend RustCrypto làm backend chạy thật (`no_std`, WASM) | **Chưa** | Hiện chỉ dùng cho test vi sai; các crate hiện dùng `std` |
-| KAT ACVP cho ML-KEM-1024 / ML-DSA, đo constant-time | **Chưa** | Giai đoạn 1 còn lại / giai đoạn 5 (fuzzing: xem dòng dưới) |
+| **Vector ACVP chính thức của NIST** (ML-KEM-768/1024, ML-DSA-65/87) | Xong | **250/250 pass**: keyGen, encap, decap (gồm ciphertext bị sửa), kiểm tra khoá đóng gói, sigGen pure (xác định + có `rnd`), sigVer. Bỏ có chủ đích: ML-KEM-512, ML-DSA-44, HashML-DSA, giao diện internal/μ, kiểm tra khoá giải mã mở rộng (không dùng trong vpqc) |
+| Đo constant-time | **Chưa** | Giai đoạn 5 |
 | C ABI (`vpqc-ffi`, header `vpqc.h`) | Xong | Panic không vượt biên; buffer xoá bộ nhớ khi giải phóng; ASan/UBSan/LSan sạch; kiểm cả C++ và liên kết tĩnh |
 | Python (PyO3 + maturin, wheel `abi3` ≥ 3.9) | Xong | `bindings/python`: kiểu dữ liệu, type hints, hệ exception; 13 test |
 | JavaScript/TypeScript (WASM, Node + web) | Xong | `bindings/js`: ~570 KB wasm, ngẫu nhiên từ `crypto.getRandomValues`; 7 test |

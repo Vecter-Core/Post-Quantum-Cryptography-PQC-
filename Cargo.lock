@@ -1872,6 +1872,7 @@ dependencies = [
  "libcrux-ml-kem",
  "ml-dsa",
  "ml-kem",
+ "serde_json",
  "vpqc-core",
  "zeroize",
 ]

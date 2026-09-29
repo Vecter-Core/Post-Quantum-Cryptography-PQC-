@@ -17,6 +17,7 @@ zeroize.workspace = true
 workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 ml-kem = { version = "0.3.2", features = ["hazmat"] }
 ml-dsa = "0.1.1"
 getrandom.workspace = true
