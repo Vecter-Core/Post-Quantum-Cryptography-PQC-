@@ -1,0 +1,9 @@
+{
+  "name": "vpqc-jose-interop",
+  "private": true,
+  "type": "module",
+  "description": "Interop of vpqc JOSE (ML-DSA, AKP JWK) with panva/jose on Node.js WebCrypto (OpenSSL)",
+  "dependencies": {
+    "jose": "6.2.12"
+  }
+}

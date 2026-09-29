@@ -1448,10 +1448,12 @@ name = "vpqc-fuzz"
 version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
+ "serde_json",
  "vpqc",
  "vpqc-core",
  "vpqc-format",
  "vpqc-hpke",
+ "vpqc-jose",
  "vpqc-scan",
 ]
 
@@ -1482,6 +1484,19 @@ dependencies = [
  "vpqc-backend-libcrux",
  "vpqc-core",
  "x25519-dalek",
+ "zeroize",
+]
+
+[[package]]
+name = "vpqc-jose"
+version = "0.0.1"
+dependencies = [
+ "base64",
+ "getrandom",
+ "serde",
+ "serde_json",
+ "sha2",
+ "vpqc-backend-libcrux",
  "zeroize",
 ]
 

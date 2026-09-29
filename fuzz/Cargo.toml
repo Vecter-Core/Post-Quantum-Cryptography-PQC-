@@ -13,6 +13,8 @@ vpqc = { path = "../crates/vpqc" }
 vpqc-core = { path = "../crates/vpqc-core" }
 vpqc-format = { path = "../crates/vpqc-format" }
 vpqc-hpke = { path = "../crates/vpqc-hpke" }
+vpqc-jose = { path = "../crates/vpqc-jose" }
+serde_json = "1"
 vpqc-scan = { path = "../crates/vpqc-scan" }
 
 [[bin]]
@@ -53,6 +55,13 @@ bench = false
 [[bin]]
 name = "scan"
 path = "fuzz_targets/scan.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "jose"
+path = "fuzz_targets/jose.rs"
 test = false
 doc = false
 bench = false

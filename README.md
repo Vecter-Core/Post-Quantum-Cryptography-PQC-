@@ -56,6 +56,17 @@ Chứng chỉ X.509 và tệp khoá được phân tích chính xác; mã nguồ
 (chỉ tìm *lần nhắc tên*, không chứng minh việc sử dụng), nên có thể có dương tính giả. Khoá
 không bao giờ được in ra.
 
+## JWT/JWS hậu lượng tử
+
+```sh
+vpqc jwk generate --out issuer.jwk > issuer.pub.jwk
+echo '{"sub":"alice"}' | vpqc jwt sign --key issuer.jwk > token
+vpqc jwt verify --key issuer.pub.jwk token
+```
+
+ML-DSA-65/87 theo draft IETF (`kty: AKP`), tương thích thư viện `jose` (Node.js); crate
+`vpqc-jose`.
+
 ## TLS lai và HPKE
 
 ```sh

@@ -1887,6 +1887,7 @@ dependencies = [
  "vpqc",
  "vpqc-core",
  "vpqc-format",
+ "vpqc-jose",
  "vpqc-scan",
 ]
 
@@ -1958,6 +1959,19 @@ dependencies = [
  "vpqc-backend-libcrux",
  "vpqc-core",
  "x25519-dalek",
+ "zeroize",
+]
+
+[[package]]
+name = "vpqc-jose"
+version = "0.0.1"
+dependencies = [
+ "base64 0.23.1",
+ "getrandom 0.4.3",
+ "serde",
+ "serde_json",
+ "sha2",
+ "vpqc-backend-libcrux",
  "zeroize",
 ]
 

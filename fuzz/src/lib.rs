@@ -28,6 +28,18 @@ pub fn sig_keys() -> &'static [KeyPair] {
     })
 }
 
+/// Deterministic JOSE signing keys: ML-DSA-65 (seed 0x31) and ML-DSA-87 (seed 0x32).
+pub fn jose_keys() -> &'static [vpqc_jose::SigningKey] {
+    use vpqc_jose::{Algorithm, SigningKey};
+    static K: OnceLock<Vec<SigningKey>> = OnceLock::new();
+    K.get_or_init(|| {
+        vec![
+            SigningKey::from_seed(Algorithm::MlDsa65, &[0x31; 32]),
+            SigningKey::from_seed(Algorithm::MlDsa87, &[0x32; 32]),
+        ]
+    })
+}
+
 /// Consumes bytes from the front of the fuzz input.
 pub struct Input<'a>(pub &'a [u8]);
 

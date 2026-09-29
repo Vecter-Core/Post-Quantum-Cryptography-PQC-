@@ -36,7 +36,7 @@ jobs:
         if: matrix.toolchain == 'stable'
       # MSRV: the library crates must keep building on the oldest supported compiler.
       # (vpqc-scan and vpqc-cli need 1.88 because of patched dependencies.)
-      - run: cargo build -p vpqc-core -p vpqc-backend-libcrux -p vpqc-hybrid -p vpqc-format -p vpqc -p vpqc-ffi
+      - run: cargo build -p vpqc-core -p vpqc-backend-libcrux -p vpqc-hybrid -p vpqc-format -p vpqc -p vpqc-ffi -p vpqc-jose
         if: matrix.toolchain != 'stable'
 
   fuzz:
@@ -55,7 +55,7 @@ jobs:
       - name: Run each target for 60 seconds from the seed corpus
         working-directory: fuzz
         run: |
-          for t in parse_formats sealed_box stream signatures hpke scan; do
+          for t in parse_formats sealed_box stream signatures hpke scan jose; do
             mkdir -p corpus/$t
             # +nightly: rust-toolchain.toml pins stable. --target: the prebuilt cargo-fuzz is a
           # musl binary and would otherwise default to the musl target.
@@ -80,6 +80,20 @@ jobs:
       # Deterministic, so it can gate. The timing (dudect) checks are too noisy for shared
       # runners and are run by hand, see tools/ct-check/README.md.
       - run: python3 tools/ct-check/grind.py
+
+  jose:
+    name: JOSE interop (panva/jose, Node.js WebCrypto)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24 # WebCrypto ML-DSA needs >= 24.7
+      - run: cargo build --release -p vpqc-cli
+      - run: ./interop/jose.sh
 
   deny:
     name: supply chain

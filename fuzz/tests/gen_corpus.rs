@@ -56,6 +56,14 @@ fn gen_corpus() {
     for i in 0..4u8 {
         put("hpke", &format!("roundtrip-{i}"), &[1, i, i, i, 4, b'i', b'n', b'f', b'o', 3, b'a', b'a', b'd', b'x', b'y']);
     }
+    for (i, key) in vpqc_fuzz::jose_keys().iter().enumerate() {
+        let i8 = i as u8;
+        let token = vpqc_jose::jws::sign(key, b"{\"exp\":2000000}", &serde_json::Map::new()).unwrap();
+        put("jose", &format!("token-{i}"), &[[0, i8].as_slice(), token.as_bytes()].concat());
+        put("jose", &format!("jwk-{i}"), &[[1, i8].as_slice(), key.to_jwk().as_bytes()].concat());
+        put("jose", &format!("pubjwk-{i}"), &[[1, i8].as_slice(), key.verifying_key().to_jwk().as_bytes()].concat());
+        put("jose", &format!("roundtrip-{i}"), &[2, i8, 7, 3, b'h', b'i']);
+    }
     let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../crates/vpqc-scan/tests/fixtures");
     for entry in std::fs::read_dir(fixtures).unwrap() {
         let entry = entry.unwrap();

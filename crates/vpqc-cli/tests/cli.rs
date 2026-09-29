@@ -359,3 +359,88 @@ fn encrypt_decrypt_streaming_files_and_pipes() {
     assert!(dec_out.status.success());
     assert_eq!(dec_out.stdout, big);
 }
+
+#[test]
+fn jose_jwk_jws_jwt() {
+    let dir = tempfile::tempdir().unwrap();
+    let private = dir.path().join("k.jwk");
+    let public = dir.path().join("pub.jwk");
+    let out = ok(&[
+        "jwk",
+        "generate",
+        "--alg",
+        "ML-DSA-87",
+        "--out",
+        p(&private),
+    ]);
+    std::fs::write(&public, &out.stdout).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = std::fs::metadata(&private).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "private JWK must be private");
+    }
+    let public_jwk: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(public_jwk["alg"], "ML-DSA-87");
+    assert!(public_jwk.get("priv").is_none());
+    let derived = ok(&["jwk", "public", p(&private)]);
+    assert_eq!(derived.stdout, out.stdout);
+    assert_eq!(
+        ok(&["jwk", "thumbprint", p(&private)]).stdout,
+        ok(&["jwk", "thumbprint", p(&public)]).stdout
+    );
+
+    let payload = dir.path().join("payload");
+    std::fs::write(&payload, b"hello \x00 world").unwrap();
+    let token = dir.path().join("token");
+    std::fs::write(
+        &token,
+        ok(&["jws", "sign", "--key", p(&private), p(&payload)]).stdout,
+    )
+    .unwrap();
+    assert_eq!(
+        ok(&["jws", "verify", "--key", p(&public), p(&token)]).stdout,
+        b"hello \x00 world"
+    );
+    // A private JWK is refused where a public key is expected.
+    assert!(
+        !vpqc(&["jws", "verify", "--key", p(&private), p(&token)])
+            .status
+            .success()
+    );
+
+    let claims = dir.path().join("claims.json");
+    std::fs::write(&claims, br#"{"sub":"alice","aud":"api"}"#).unwrap();
+    let jwt = dir.path().join("jwt");
+    std::fs::write(
+        &jwt,
+        ok(&[
+            "jwt",
+            "sign",
+            "--key",
+            p(&private),
+            "--ttl",
+            "60",
+            p(&claims),
+        ])
+        .stdout,
+    )
+    .unwrap();
+    let verified = ok(&[
+        "jwt",
+        "verify",
+        "--key",
+        p(&public),
+        "--aud",
+        "api",
+        p(&jwt),
+    ]);
+    let v: serde_json::Value = serde_json::from_slice(&verified.stdout).unwrap();
+    assert_eq!(v["sub"], "alice");
+    assert!(
+        !vpqc(&["jwt", "verify", "--key", p(&public), p(&jwt)])
+            .status
+            .success(),
+        "aud not checked"
+    );
+}

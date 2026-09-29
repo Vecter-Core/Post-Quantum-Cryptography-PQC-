@@ -11,6 +11,7 @@ members = [
     "crates/vpqc-scan",
     "crates/vpqc-hpke",
     "crates/vpqc-tls",
+    "crates/vpqc-jose",
     "tools/ct-check",
 ]
 
@@ -31,6 +32,7 @@ vpqc-format = { path = "crates/vpqc-format", version = "0.0.1" }
 vpqc = { path = "crates/vpqc", version = "0.0.1" }
 vpqc-scan = { path = "crates/vpqc-scan", version = "0.0.1" }
 vpqc-hpke = { path = "crates/vpqc-hpke", version = "0.0.1" }
+vpqc-jose = { path = "crates/vpqc-jose", version = "0.0.1" }
 
 libcrux-ml-kem = { version = "0.0.10", default-features = false, features = ["mlkem768", "mlkem1024", "std"] }
 libcrux-ml-dsa = { version = "0.0.10", default-features = false, features = ["mldsa65", "mldsa87", "std"] }
@@ -47,6 +49,7 @@ aes-gcm = "0.11"
 hkdf = "0.13"
 sha2 = "0.11"
 regex = "1"
+serde = "1"
 serde_json = "1"
 x509-parser = "0.18"
 p384 = { version = "0.14", default-features = false, features = ["arithmetic", "ecdh", "ecdsa", "std"] }
