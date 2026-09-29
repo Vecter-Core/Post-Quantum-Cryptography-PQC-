@@ -1,0 +1,57 @@
+[workspace]
+resolver = "3"
+members = [
+    "crates/vpqc-core",
+    "crates/vpqc-backend-libcrux",
+    "crates/vpqc-hybrid",
+    "crates/vpqc-format",
+    "crates/vpqc",
+    "crates/vpqc-cli",
+    "crates/vpqc-ffi",
+    "crates/vpqc-scan",
+]
+
+exclude = ["bindings/python", "bindings/js"]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/Vecter-Core/Post-Quantum-Cryptography-PQC-"
+
+[workspace.dependencies]
+vpqc-core = { path = "crates/vpqc-core", version = "0.0.1" }
+vpqc-backend-libcrux = { path = "crates/vpqc-backend-libcrux", version = "0.0.1" }
+vpqc-hybrid = { path = "crates/vpqc-hybrid", version = "0.0.1" }
+vpqc-format = { path = "crates/vpqc-format", version = "0.0.1" }
+vpqc = { path = "crates/vpqc", version = "0.0.1" }
+vpqc-scan = { path = "crates/vpqc-scan", version = "0.0.1" }
+
+libcrux-ml-kem = { version = "0.0.10", default-features = false, features = ["mlkem768", "mlkem1024", "std"] }
+libcrux-ml-dsa = { version = "0.0.10", default-features = false, features = ["mldsa65", "mldsa87", "std"] }
+x25519-dalek = "3.0.0"
+ed25519-dalek = "3.0.0"
+sha3 = "0.12.0"
+libcrux-sha3 = "0.0.10"
+chacha20poly1305 = "0.11.0"
+getrandom = "0.4.3"
+zeroize = "1.9.0"
+subtle = "2.6.1"
+base64 = "0.23.1"
+regex = "1"
+serde_json = "1"
+x509-parser = "0.18"
+p384 = { version = "0.14", default-features = false, features = ["arithmetic", "ecdh", "ecdsa", "std"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+overflow-checks = true

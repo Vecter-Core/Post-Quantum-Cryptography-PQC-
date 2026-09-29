@@ -1,0 +1,28 @@
+[package]
+name = "vpqc-ffi"
+description = "Stable C ABI for vpqc; the foundation for bindings in Go, Java, .NET, Swift, PHP and others"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "vpqc_ffi"
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+vpqc.workspace = true
+vpqc-core.workspace = true
+zeroize.workspace = true
+
+# This is the only crate allowed to use `unsafe` (ADR-0001). Every unsafe block carries a
+# SAFETY comment, and unsafe operations inside unsafe fns must be explicit.
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+missing_docs = "warn"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+missing_safety_doc = "deny"
+undocumented_unsafe_blocks = "deny"

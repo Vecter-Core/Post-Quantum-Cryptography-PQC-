@@ -7,6 +7,41 @@
 
 ---
 
+## Trạng thái triển khai (cập nhật 2026-09-29)
+
+| Hạng mục | Trạng thái | Ghi chú |
+|----------|-----------|---------|
+| Giai đoạn 0: workspace, CI, ADR, SECURITY, `deny.toml` | Xong | 5 ADR trong `docs/adr/`; MSRV 1.85 đã build thử; `cargo deny check` sạch |
+| ML-KEM-768/1024 (FIPS 203) | Xong | Backend libcrux; **khớp từng byte với RustCrypto `ml-kem`** (test vi sai) |
+| ML-DSA-65/87 (FIPS 204) | Xong | Backend libcrux; khớp từng byte với RustCrypto `ml-dsa`, kể cả chữ ký xác định |
+| X-Wing (X25519 + ML-KEM-768) | Xong | **Vượt 3/3 test vector chính thức** của draft CFRG (keygen, encaps, decaps) |
+| Chữ ký composite Ed25519 + ML-DSA-65 | Xong | Nhãn vpqc riêng, chưa tương thích dây với draft LAMPS (xem ADR-0005) |
+| Phong bì `sealed`, chữ ký tách rời, khoá dạng armor | Xong | Chống hạ cấp: header + KEM ciphertext nằm trong KDF và AAD |
+| API dễ dùng `vpqc` (`seal/open`, `sign/verify`) và CLI `vpqc` | Xong | 3 profile: `standard`, `fast-auth`, `cnsa2` |
+| Profile `high`: KEM lai MLKEM1024-P384 + chữ ký composite ECDSA-P384 + ML-DSA-87 | Xong | KEM **vượt 10/10 vector chính thức** của draft CFRG concrete-hybrid-kems; ECDSA low-S bắt buộc (đã kiểm bằng đột biến) |
+| Profile `archive` (SLH-DSA) | **Hoãn có chủ đích** | Xem ADR-0006: chỉ có `slh-dsa` bản RC, chưa kiểm toán, không có bản thứ hai để đối chiếu |
+| Profile `fips` (backend aws-lc-rs, FIPS 140-3) | **Chưa** | Cần backend aws-lc-rs |
+| Backend RustCrypto làm backend chạy thật (`no_std`, WASM) | **Chưa** | Hiện chỉ dùng cho test vi sai; các crate hiện dùng `std` |
+| KAT ACVP cho ML-KEM-1024 / ML-DSA, fuzzing, đo constant-time | **Chưa** | Giai đoạn 1 còn lại / giai đoạn 5 |
+| C ABI (`vpqc-ffi`, header `vpqc.h`) | Xong | Panic không vượt biên; buffer xoá bộ nhớ khi giải phóng; ASan/UBSan/LSan sạch; kiểm cả C++ và liên kết tĩnh |
+| Python (PyO3 + maturin, wheel `abi3` ≥ 3.9) | Xong | `bindings/python`: kiểu dữ liệu, type hints, hệ exception; 13 test |
+| JavaScript/TypeScript (WASM, Node + web) | Xong | `bindings/js`: ~570 KB wasm, ngẫu nhiên từ `crypto.getRandomValues`; 7 test |
+| Go (cgo, liên kết tĩnh) | Xong | `bindings/go`: `errors.Is`, `-race` sạch, khoá bí mật không in ra qua `fmt`; mới thử trên Linux |
+| Java (Panama FFM, JDK 21 preview / 22+ final) | Xong | `bindings/java`: Maven, `DecryptionException`…, `SecretKey.destroy()`; 10 test. **Chưa có JCA Provider** (`KeyPairGenerator`/`Signature`) |
+| PHP (FFI), Ruby (ffi gem) | Xong | `bindings/php` (29 kiểm tra), `bindings/ruby` (9 test) |
+| **Test tương tác chéo ngôn ngữ** (`interop/run.sh`) | Xong | CLI Rust, Python, Node, Go, Java, PHP, Ruby: **5502 kiểm tra, 0 lỗi (4 profile)** (mọi tổ hợp sinh khoá × mã hoá × giải mã, ký × xác minh, sai context, dữ liệu bị sửa) |
+| Parser: fuzz nhẹ (>600.000 đầu vào ngẫu nhiên/biến dị) | Xong | `vpqc-format/tests/robustness.rs`; fuzz theo độ phủ (`cargo-fuzz`) vẫn chưa |
+| Công cụ di trú `vpqc scan`: kiểm kê mật mã (mã nguồn, cấu hình, chứng chỉ X.509, khoá), xếp hạng T0-T4, xuất **CBOM CycloneDX 1.6** | Xong | `crates/vpqc-scan`; chứng chỉ/khoá phân tích chính xác, mã nguồn theo mẫu (heuristic, ghi rõ); CBOM **hợp lệ theo schema chính thức**; `--fail-on` để chặn trong CI; không bao giờ in khoá |
+| `vpqc lint` (gợi ý sửa mã), chế độ song song (shadow mode), kill-switch profile | **Chưa** | `scan` đã có lời khuyên theo tầng; phần còn lại là giai đoạn 4 |
+| .NET, Swift, Kotlin (JCA), Dart | **Chưa** | Chưa có toolchain trong môi trường này để kiểm chứng; dùng chung C ABI |
+| Phát hành gói (PyPI wheel đa nền tảng, npm, thư viện C dựng sẵn cho Go) | **Chưa** | Hiện phải build từ mã nguồn. CI GitHub xanh: Rust trên Ubuntu/macOS/Windows, MSRV 1.85 cho lõi, `cargo deny`, và job bindings + interop trên Ubuntu. Các binding chưa được thử trên macOS/Windows |
+| Kiểm toán bên ngoài | **Chưa** | **Chưa dùng cho bí mật thật** |
+
+Ghi chú lệch so với sơ đồ mục 3: `vpqc-policy` hiện nằm trong `vpqc-core` (module `profile`);
+`vpqc-easy` là crate `vpqc`; backend RustCrypto chưa có adapter.
+
+---
+
 ## 0. Tầm nhìn và nguyên tắc
 
 **Mục tiêu:** một bộ thư viện giúp mọi hệ thống chống được máy tính lượng tử mà không cần

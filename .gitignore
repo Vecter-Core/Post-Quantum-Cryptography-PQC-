@@ -1,0 +1,12 @@
+**/target/
+*.vpqc-secret
+# bindings build output
+bindings/js/pkg/
+bindings/js/node_modules/
+bindings/python/python/vpqc/*.so
+bindings/python/python/vpqc/*.pyd
+bindings/python/python/vpqc/*.dylib
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/

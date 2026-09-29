@@ -1,0 +1,22 @@
+[package]
+name = "vpqc-hybrid"
+description = "Hybrid post-quantum/classical constructions for vpqc: X-Wing KEM and Ed25519+ML-DSA composite signatures"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vpqc-core.workspace = true
+vpqc-backend-libcrux.workspace = true
+x25519-dalek.workspace = true
+ed25519-dalek.workspace = true
+sha3.workspace = true
+p384.workspace = true
+libcrux-sha3.workspace = true
+subtle.workspace = true
+zeroize.workspace = true
+
+[lints]
+workspace = true

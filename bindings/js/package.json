@@ -1,0 +1,21 @@
+{
+  "name": "@vpqc/core",
+  "version": "0.0.1",
+  "description": "Post-quantum cryptography with safe defaults (WebAssembly). Pre-release, unaudited.",
+  "license": "Apache-2.0",
+  "repository": "https://github.com/Vecter-Core/Post-Quantum-Cryptography-PQC-",
+  "main": "./pkg/node/vpqc.js",
+  "types": "./pkg/node/vpqc.d.ts",
+  "exports": {
+    ".": {
+      "node": { "types": "./pkg/node/vpqc.d.ts", "default": "./pkg/node/vpqc.js" },
+      "default": { "types": "./pkg/web/vpqc.d.ts", "default": "./pkg/web/vpqc.js" }
+    }
+  },
+  "files": ["pkg", "README.md"],
+  "scripts": {
+    "build": "sh scripts/build.sh",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": { "node": ">=20" }
+}

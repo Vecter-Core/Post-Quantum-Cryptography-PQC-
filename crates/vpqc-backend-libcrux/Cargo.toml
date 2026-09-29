@@ -1,0 +1,22 @@
+[package]
+name = "vpqc-backend-libcrux"
+description = "libcrux (formally verified) ML-KEM and ML-DSA backend for vpqc"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+vpqc-core.workspace = true
+libcrux-ml-kem.workspace = true
+libcrux-ml-dsa.workspace = true
+zeroize.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+ml-kem = { version = "0.3.2", features = ["hazmat"] }
+ml-dsa = "0.1.1"
+getrandom.workspace = true
