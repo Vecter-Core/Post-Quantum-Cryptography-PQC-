@@ -56,6 +56,17 @@ pub fn x509_pki() -> &'static (vpqc_x509::Certificate, vpqc_x509::Certificate) {
     })
 }
 
+/// The fixed COSE verification key (ML-DSA-65, seed 0x51). The seed corpus holds messages and
+/// CWTs it signed over the payload [`COSE_PAYLOAD`] / with subject [`COSE_PAYLOAD`].
+pub fn cose_key() -> &'static vpqc_cose::VerifyingKey {
+    use vpqc_cose::{Algorithm, SigningKey};
+    static K: OnceLock<vpqc_cose::VerifyingKey> = OnceLock::new();
+    K.get_or_init(|| SigningKey::from_seed(Algorithm::MlDsa65, &[0x51; 32]).verifying_key())
+}
+
+/// The only payload (and CWT subject) the fixed COSE key ever signed.
+pub const COSE_PAYLOAD: &str = "fuzz";
+
 /// Consumes bytes from the front of the fuzz input.
 pub struct Input<'a>(pub &'a [u8]);
 

@@ -175,6 +175,31 @@ let claims = jwt::decode(&token, &key.verifying_key(), &jwt::Validation {
   8 KB thường gặp của proxy; kiểm tra trước khi gửi trong `Authorization`.
 - Đây là ML-DSA "thuần" (chuẩn), không phải chữ ký lai: để các hệ khác xác minh được (ADR-0008).
 
+## 3e. COSE / CWT hậu lượng tử (IoT, thiết bị, firmware)
+
+Bản nhị phân (CBOR) của JWS/JWT, cho CoAP, thiết bị IoT, attestation, manifest firmware:
+
+```sh
+vpqc cose key --out thiet-bi.key --pub thiet-bi.pub           # COSE_Key AKP (ML-DSA-65)
+vpqc cose sign --key thiet-bi.key --kid cam-bien-17 -o msg.cose du-lieu.bin
+vpqc cose verify --key thiet-bi.pub msg.cose                   # in ra payload
+vpqc cose sign --key fw.key --detached --aad "model-X/v2" firmware.bin > fw.sig
+vpqc cose verify --key fw.pub --aad "model-X/v2" --payload firmware.bin fw.sig
+vpqc cwt sign --key as.key --iss as.congtyx.vn --sub cam-bien-17 --aud den-kho-3 --ttl 3600 -o tok.cwt
+vpqc cwt verify --key as.pub --aud den-kho-3 tok.cwt           # claims dạng JSON
+```
+
+- Thêm `--base64` để có văn bản base64url; khi xác minh, đầu vào base64url được nhận tự động.
+- Mặc định an toàn: `alg` phải nằm trong header được bảo vệ và khớp khoá; `kid` và content
+  type cũng được ký. `crit` và nhãn trùng giữa hai header bị từ chối. CWT bắt buộc `exp`;
+  token có `aud` chỉ được chấp nhận khi bạn khai báo audience của mình.
+- `--aad` (external AAD) gắn ngữ cảnh không truyền đi (model thiết bị, phiên bản...): chữ ký
+  của thiết bị này không dùng lại được cho ngữ cảnh khác.
+- **Kích thước:** thông điệp/CWT ML-DSA-65 khoảng 3,4 KB. Ổn với CoAP block-wise, BLE có phân
+  mảnh; **không** vừa một khung LoRaWAN/802.15.4: hãy xác minh ở gateway (ADR-0012).
+- Tương thích: ML-DSA theo draft-ietf-cose-dilithium với giá trị IANA (−49/−50, `kty` 7); đã
+  kiểm hai chiều với OpenSSL + cbor2 và đối chiếu với `coset` (Google).
+
 ## 3c. Chứng chỉ X.509 hậu lượng tử (ML-DSA)
 
 Chứng chỉ theo RFC 9881, dùng được với OpenSSL ≥ 3.5 (đã kiểm với `cryptography` và Node.js):

@@ -14,6 +14,7 @@ vpqc-core = { path = "../crates/vpqc-core" }
 vpqc-format = { path = "../crates/vpqc-format" }
 vpqc-hpke = { path = "../crates/vpqc-hpke" }
 vpqc-jose = { path = "../crates/vpqc-jose" }
+vpqc-cose = { path = "../crates/vpqc-cose" }
 vpqc-x509 = { path = "../crates/vpqc-x509" }
 serde_json = "1"
 vpqc-scan = { path = "../crates/vpqc-scan" }
@@ -78,6 +79,13 @@ bench = false
 [[bin]]
 name = "ssh"
 path = "fuzz_targets/ssh.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "cose"
+path = "fuzz_targets/cose.rs"
 test = false
 doc = false
 bench = false

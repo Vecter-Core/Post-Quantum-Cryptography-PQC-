@@ -68,6 +68,18 @@ vpqc jwt verify --key issuer.pub.jwk token
 ML-DSA-65/87 theo draft IETF (`kty: AKP`), tương thích thư viện `jose` (Node.js); crate
 `vpqc-jose`.
 
+## COSE / CWT hậu lượng tử (IoT)
+
+```sh
+vpqc cose key --out dev.key --pub dev.pub
+vpqc cose sign --key dev.key --kid sensor-17 -o msg.cose reading.cbor
+vpqc cwt sign --key as.key --sub sensor-17 --aud light-3 -o token.cwt
+vpqc cwt verify --key as.pub --aud light-3 token.cwt
+```
+
+COSE_Sign1/CWT ký bằng ML-DSA (draft-ietf-cose-dilithium, giá trị IANA), tương thích OpenSSL
+và `coset`; crate `vpqc-cose` (ADR-0012).
+
 ## Chứng chỉ X.509 hậu lượng tử
 
 ```sh
