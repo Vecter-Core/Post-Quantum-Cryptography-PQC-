@@ -283,11 +283,17 @@ impl Reader<'_> {
 }
 
 /// IEEE 754 binary16 to f64 (RFC 8949 appendix D).
+/// Exact power of two (`powi` is not guaranteed exact on every platform).
+fn pow2(k: i32) -> f64 {
+    debug_assert!((-1022..=1023).contains(&k));
+    f64::from_bits(((1023 + k) as u64) << 52)
+}
+
 fn half_to_f64(h: u16) -> f64 {
     let exp = (h >> 10) & 0x1f;
     let mant = (h & 0x3ff) as f64;
     let magnitude = match exp {
-        0 => mant * 2f64.powi(-24),
+        0 => mant * pow2(-24),
         31 => {
             if mant == 0.0 {
                 f64::INFINITY
@@ -295,7 +301,7 @@ fn half_to_f64(h: u16) -> f64 {
                 f64::NAN
             }
         }
-        _ => (mant + 1024.0) * 2f64.powi(exp as i32 - 25),
+        _ => (mant + 1024.0) * pow2(exp as i32 - 25),
     };
     if h & 0x8000 != 0 {
         -magnitude

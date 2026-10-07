@@ -45,6 +45,8 @@ enum ScanFormat {
     Json,
     /// CycloneDX 1.6 cryptographic bill of materials.
     Cbom,
+    /// SARIF 2.1.0 (GitHub code scanning): problems only; scan from the repository root.
+    Sarif,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -265,6 +267,21 @@ enum Command {
         /// Write the report to a file instead of stdout.
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+    /// Concrete migration suggestions: for each quantum-vulnerable or weak finding in source code,
+    /// the vpqc call that replaces the usual use, in the language of the file.
+    Lint {
+        /// File or directory to scan.
+        path: PathBuf,
+        /// Print JSON.
+        #[arg(long)]
+        json: bool,
+        /// Skip paths containing this text (repeatable).
+        #[arg(long)]
+        exclude: Vec<String>,
+        /// Exit with status 2 if there is anything to migrate. For CI gating.
+        #[arg(long)]
+        fail: bool,
     },
     /// Post-quantum JWKs (`AKP`, ML-DSA) for JOSE.
     Jwk {
@@ -598,6 +615,7 @@ fn run(cli: Cli) -> CliResult {
                 ScanFormat::Text => vpqc_scan::to_text(&report, all),
                 ScanFormat::Json => vpqc_scan::to_json(&report),
                 ScanFormat::Cbom => vpqc_scan::to_cbom(&report),
+                ScanFormat::Sarif => vpqc_scan::to_sarif(&report),
             };
             write_output(&output, text.as_bytes())?;
             let bad = match fail_on {
@@ -622,6 +640,36 @@ fn run(cli: Cli) -> CliResult {
         Command::Jws { command } => jose::jws(command),
         Command::Jwt { command } => jose::jwt(command),
         Command::X509 { command } => x509::run(command),
+        Command::Lint {
+            path,
+            json,
+            exclude,
+            fail,
+        } => {
+            let options = vpqc_scan::Options {
+                exclude,
+                ..vpqc_scan::Options::default()
+            };
+            let report = vpqc_scan::scan_path(&path, &options)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            let text = if json {
+                vpqc_scan::to_lint_json(&report)
+            } else {
+                vpqc_scan::to_lint_text(&report)
+            };
+            write_output(&None, text.as_bytes())?;
+            if fail
+                && report.findings.iter().any(|f| {
+                    matches!(
+                        f.risk,
+                        vpqc_scan::Risk::QuantumVulnerable | vpqc_scan::Risk::Weak
+                    )
+                })
+            {
+                std::process::exit(2);
+            }
+            Ok(())
+        }
         Command::Ssh { command } => ssh::run(command),
         Command::Wg { command } => wg::run(command),
         Command::Cose { command } => cose::cose(command),

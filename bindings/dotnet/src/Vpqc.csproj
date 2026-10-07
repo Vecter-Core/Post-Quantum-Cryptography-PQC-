@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>Vecter.Vpqc</RootNamespace>
+    <AssemblyName>Vecter.Vpqc</AssemblyName>
+    <PackageId>Vecter.Vpqc</PackageId>
+    <Version>0.0.1</Version>
+    <Description>Post-quantum cryptography with safe defaults (native Rust core through the C ABI). Pre-release, unaudited.</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/Vecter-Core/Post-Quantum-Cryptography-PQC-</RepositoryUrl>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <LangVersion>12</LangVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Native libraries, laid out by the release workflow as runtimes/<rid>/native/*; .NET finds them without configuration. -->
+    <None Include="runtimes/**" Pack="true" PackagePath="runtimes/" Visible="false" />
+    <None Include="../README.md" Pack="true" PackagePath="/" Visible="false" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,28 @@
+# Copy to .github/workflows/vpqc-scan.yml in the repository you want to inventory.
+# Quantum-vulnerable and weak cryptography shows up as annotations and in the Security tab;
+# `--fail-on` (optional) also fails the job. The CBOM is kept as a build artifact.
+name: vpqc crypto inventory
+on:
+  push: { branches: [main] }
+  pull_request:
+  schedule: [{ cron: "0 4 * * 1" }]
+permissions:
+  contents: read
+  security-events: write # upload SARIF
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      # Pin a commit or tag once releases exist.
+      - run: cargo install --locked --git https://github.com/Vecter-Core/Post-Quantum-Cryptography-PQC- vpqc-cli
+      # Scan from the repository root so that SARIF paths are relative.
+      - run: vpqc scan . --format sarif -o vpqc.sarif --exclude node_modules --exclude vendor
+      - run: vpqc scan . --format cbom -o cbom.json --exclude node_modules --exclude vendor
+      - uses: github/codeql-action/upload-sarif@v3
+        with: { sarif_file: vpqc.sarif, category: vpqc }
+      - uses: actions/upload-artifact@v4
+        with: { name: cbom, path: cbom.json }
+      # Optional gate: fail on anything quantum-vulnerable.
+      # - run: vpqc scan . --fail-on quantum-vulnerable --exclude node_modules --exclude vendor

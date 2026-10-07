@@ -17,7 +17,8 @@ fn scan_fixtures() -> Report {
 fn find<'a>(r: &'a Report, path_part: &str, algo_part: &str) -> &'a vpqc_scan::Finding {
     r.findings
         .iter()
-        .find(|f| f.path.contains(path_part) && f.algorithm.contains(algo_part))
+        // Paths are matched with `/`, also on Windows where they are printed with `\`.
+        .find(|f| f.path.replace('\\', "/").contains(path_part) && f.algorithm.contains(algo_part))
         .unwrap_or_else(|| {
             panic!(
                 "no finding for {path_part} / {algo_part}: {:#?}",
@@ -550,4 +551,133 @@ fn vpn_configurations_are_audited() {
     for out in [to_text(&r, true), to_json(&r), to_cbom(&r)] {
         assert!(!out.contains(secret), "key leaked");
     }
+}
+
+#[test]
+fn sarif_reports_only_problems_with_stable_rules() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("a.py"),
+        "h = hashlib.md5(b'x')\nk = rsa.generate_private_key(65537, 2048)\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("pq.go"), "kem := mlkem.GenerateKey768()\n").unwrap();
+    let r = scan_path(dir.path(), &Options::default()).unwrap();
+    let doc: serde_json::Value = serde_json::from_str(&vpqc_scan::to_sarif(&r)).unwrap();
+    assert_eq!(doc["version"], "2.1.0");
+    let run = &doc["runs"][0];
+    let results = run["results"].as_array().unwrap();
+    assert!(!results.is_empty());
+    // Post-quantum findings are not problems.
+    assert!(results.iter().all(|x| {
+        !x["message"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("post-quantum]")
+    }));
+    assert!(results.iter().all(|x| {
+        !x["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+            .as_str()
+            .unwrap()
+            .ends_with("pq.go")
+    }));
+    // Every result points at a rule that exists, and rule ids are unique.
+    let rules: Vec<&str> = run["tool"]["driver"]["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["id"].as_str().unwrap())
+        .collect();
+    let mut unique = rules.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), rules.len());
+    for x in results {
+        assert!(rules.contains(&x["ruleId"].as_str().unwrap()));
+        assert!(
+            x["locations"][0]["physicalLocation"]["region"]["startLine"]
+                .as_u64()
+                .unwrap()
+                >= 1
+        );
+        assert!(
+            !x["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+                .as_str()
+                .unwrap()
+                .contains('\\')
+        );
+    }
+    // RSA of unknown purpose is T0/T1: an error.
+    assert!(
+        results
+            .iter()
+            .any(|x| x["level"] == "error" && x["ruleId"].as_str().unwrap().contains("rsa"))
+    );
+}
+
+#[test]
+fn lint_suggests_vpqc_calls_per_language() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("app.py"),
+        "k = rsa.generate_private_key(65537, 2048)\nh = hashlib.md5(b'x')\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("kx.go"),
+        "key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("nginx.conf"),
+        "ssl_ecdh_curve prime256v1;\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("pq.go"), "kem := mlkem.GenerateKey768()\n").unwrap();
+    let r = scan_path(dir.path(), &Options::default()).unwrap();
+
+    let text = vpqc_scan::to_lint_text(&r);
+    assert!(
+        text.contains("vpqc.generate_encryption_keypair()"),
+        "{text}"
+    );
+    assert!(text.contains("vpqc.generate_signing_keypair()"), "{text}");
+    assert!(
+        text.contains("vpqc.GenerateSigningKeypair(vpqc.ProfileStandard)"),
+        "{text}"
+    );
+    assert!(text.contains("SHA-256, SHA-384 or SHA-3"), "{text}");
+    // Configuration files get the advice text, not a code snippet; post-quantum code is not a problem.
+    assert!(text.contains("advice:"), "{text}");
+    assert!(!text.contains("pq.go"), "{text}");
+    // A second mention in the same file does not repeat the snippet.
+    assert_eq!(
+        text.matches("vpqc.generate_encryption_keypair()").count(),
+        1,
+        "{text}"
+    );
+
+    let json: serde_json::Value = serde_json::from_str(&vpqc_scan::to_lint_json(&r)).unwrap();
+    let findings = json["findings"].as_array().unwrap();
+    assert!(
+        findings
+            .iter()
+            .any(|f| f["path"].as_str().unwrap().ends_with("nginx.conf")
+                && f["suggestion"].is_null())
+    );
+    assert!(findings.iter().any(|f| f["suggestion"]["language"] == "Go"));
+    // Most urgent tier first.
+    let tiers: Vec<&str> = findings
+        .iter()
+        .map(|f| f["tier"].as_str().unwrap())
+        .collect();
+    let mut sorted = tiers.clone();
+    sorted.sort();
+    assert_eq!(tiers, sorted);
+
+    // Clean tree.
+    let clean = tempfile::tempdir().unwrap();
+    fs::write(clean.path().join("ok.py"), "x = 1\n").unwrap();
+    let r = scan_path(clean.path(), &Options::default()).unwrap();
+    assert!(vpqc_scan::to_lint_text(&r).contains("No quantum-vulnerable"));
 }

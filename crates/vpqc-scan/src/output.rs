@@ -1,4 +1,4 @@
-//! Report rendering: text, JSON and CycloneDX 1.6 CBOM.
+//! Report rendering: text, JSON, CycloneDX 1.6 CBOM and SARIF 2.1.0.
 
 use std::collections::BTreeMap;
 use std::fmt::Write;
@@ -277,6 +277,94 @@ pub fn to_cbom(report: &Report) -> String {
             ]
         },
         "components": components,
+    });
+    serde_json::to_string_pretty(&doc).expect("serializable")
+}
+
+/// Lowercase, dash-separated identifier of an algorithm name, for SARIF rule ids.
+fn rule_slug(algorithm: &str) -> String {
+    let mut out = String::new();
+    for c in algorithm.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+        } else if !out.ends_with('-') && !out.is_empty() {
+            out.push('-');
+        }
+    }
+    out.trim_end_matches('-').to_string()
+}
+
+/// SARIF 2.1.0 for GitHub code scanning and other SARIF consumers.
+///
+/// Only problems are reported: quantum-vulnerable findings (`error` for tiers T0 and T1,
+/// `warning` otherwise) and weak algorithms (`warning`). Post-quantum and informational findings
+/// are omitted. Locations are the scanned paths with `/` separators, so scan from the repository
+/// root with a relative path (`vpqc scan .`) for annotations to attach to files.
+pub fn to_sarif(report: &Report) -> String {
+    let problems: Vec<&Finding> = report
+        .findings
+        .iter()
+        .filter(|f| matches!(f.risk, Risk::QuantumVulnerable | Risk::Weak))
+        .collect();
+    let severity = |f: &Finding| -> (&'static str, &'static str) {
+        // Ambiguous tiers ("T0/T1": an RSA key of unknown purpose) are rated by the worse one.
+        match (f.risk, f.tier) {
+            (Risk::QuantumVulnerable, "T0") => ("error", "9.0"),
+            (Risk::QuantumVulnerable, "T0/T1") => ("error", "8.0"),
+            (Risk::QuantumVulnerable, "T1") => ("error", "7.5"),
+            _ => ("warning", "5.0"),
+        }
+    };
+    let mut rules: BTreeMap<String, Value> = BTreeMap::new();
+    for f in &problems {
+        let id = format!("vpqc/{}", rule_slug(&f.algorithm));
+        let (_, score) = severity(f);
+        rules.entry(id.clone()).or_insert_with(|| {
+            json!({
+                "id": id,
+                "name": f.algorithm,
+                "shortDescription": { "text": f.algorithm },
+                "fullDescription": { "text": f.advice },
+                "help": { "text": f.advice },
+                "helpUri": "https://github.com/Vecter-Core/Post-Quantum-Cryptography-PQC-/blob/main/docs/adr/0003-hybrid-by-risk-tier.md",
+                "defaultConfiguration": { "level": severity(f).0 },
+                "properties": {
+                    "tags": ["security", "cryptography", "post-quantum"],
+                    "security-severity": score,
+                    "precision": "medium",
+                },
+            })
+        });
+    }
+    let results: Vec<Value> = problems
+        .iter()
+        .map(|f| {
+            let uri = f.path.replace('\\', "/");
+            let uri = uri.strip_prefix("./").unwrap_or(&uri).to_string();
+            let mut physical = json!({ "artifactLocation": { "uri": uri } });
+            if let Some(line) = f.line {
+                physical["region"] = json!({ "startLine": line });
+            }
+            json!({
+                "ruleId": format!("vpqc/{}", rule_slug(&f.algorithm)),
+                "level": severity(f).0,
+                "message": { "text": format!("{} [{}, {}]: {}", f.algorithm, f.tier, f.risk.as_str(), f.detail) },
+                "locations": [ { "physicalLocation": physical } ],
+                "properties": { "tier": f.tier, "source": f.source.as_str(), "longLived": f.long_lived },
+            })
+        })
+        .collect();
+    let doc = json!({
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "version": "2.1.0",
+        "runs": [ {
+            "tool": { "driver": {
+                "name": "vpqc-scan",
+                "informationUri": "https://github.com/Vecter-Core/Post-Quantum-Cryptography-PQC-",
+                "rules": rules.into_values().collect::<Vec<_>>(),
+            } },
+            "results": results,
+        } ],
     });
     serde_json::to_string_pretty(&doc).expect("serializable")
 }

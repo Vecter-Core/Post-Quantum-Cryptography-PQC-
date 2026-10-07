@@ -23,10 +23,15 @@ subtle.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+criterion = { version = "0.7", default-features = false }
 vpqc-format.workspace = true
 tempfile = "3"
 serde_json.workspace = true
 vpqc-core.workspace = true
+
+[[bench]]
+name = "profiles"
+harness = false
 
 [lints]
 workspace = true
