@@ -1,0 +1,17 @@
+name: vpqc
+description: >-
+  Post-quantum cryptography with safe defaults (hybrid X25519+ML-KEM-768, ML-DSA), native Rust
+  core through dart:ffi. Pre-release, unaudited.
+version: 0.0.1
+repository: https://github.com/Vecter-Core/Post-Quantum-Cryptography-PQC-
+publish_to: none # pre-release: see docs/RELEASING.md
+
+environment:
+  sdk: ^3.3.0
+
+dependencies:
+  ffi: ^2.1.0
+
+dev_dependencies:
+  test: ^1.25.0
+  lints: ^5.0.0

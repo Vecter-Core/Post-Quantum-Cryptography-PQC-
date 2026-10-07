@@ -12,3 +12,12 @@ __pycache__/
 *.egg-info/
 interop/jose/node_modules/
 interop/jose/package-lock.json
+# .NET build output
+bin/
+obj/
+bindings/dotnet/dist/
+bindings/dotnet/src/runtimes/
+bindings/dotnet/src/runtimes-staging/
+# Dart
+.dart_tool/
+pubspec.lock

@@ -45,6 +45,8 @@ enum ScanFormat {
     Json,
     /// CycloneDX 1.6 cryptographic bill of materials.
     Cbom,
+    /// SARIF 2.1.0 (GitHub code scanning): problems only; scan from the repository root.
+    Sarif,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -598,6 +600,7 @@ fn run(cli: Cli) -> CliResult {
                 ScanFormat::Text => vpqc_scan::to_text(&report, all),
                 ScanFormat::Json => vpqc_scan::to_json(&report),
                 ScanFormat::Cbom => vpqc_scan::to_cbom(&report),
+                ScanFormat::Sarif => vpqc_scan::to_sarif(&report),
             };
             write_output(&output, text.as_bytes())?;
             let bad = match fail_on {

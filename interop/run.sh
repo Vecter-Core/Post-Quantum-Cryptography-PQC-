@@ -8,6 +8,7 @@
 #
 # Environment: VPQC_CLI (Rust CLI), PYTHON (interpreter with vpqc installed), NODE, GO_DRIVER.
 # Set INTEROP_PHP=1 / INTEROP_RUBY=1 (needs the ffi gem) to include PHP / Ruby.
+# Set INTEROP_DOTNET=1 to include .NET (needs the dotnet SDK 8), INTEROP_DART=1 for Dart.
 # Set INTEROP_JAVA=1 to include Java (needs `mvn package -DskipTests` in bindings/java first;
 # slower because every call starts a JVM).
 set -euo pipefail
@@ -58,12 +59,25 @@ java_() {
 }
 php_()  { VPQC_LIBRARY="$ROOT/target/release/libvpqc_ffi.so" "${PHP:-php}" -d ffi.enable=1 "$ROOT/interop/drivers/php_driver.php" "$@"; }
 ruby_() { VPQC_LIBRARY="$ROOT/target/release/libvpqc_ffi.so" "${RUBY:-ruby}" "$ROOT/interop/drivers/ruby_driver.rb" "$@"; }
+dotnet_() { VPQC_LIBRARY="$ROOT/target/release/libvpqc_ffi.so" LC_ALL=C.UTF-8 DOTNET_CLI_TELEMETRY_OPTOUT=1 "${DOTNET:-dotnet}" "$DOTNET_OUT/DotnetDriver.dll" "$@"; }
+DOTNET_OUT=""
+dart_() { VPQC_LIBRARY="$ROOT/target/release/libvpqc_ffi.so" "${DART:-dart}" run "$ROOT/interop/drivers/dart/bin/driver.dart" "$@"; }
 run() { # run IMPL CMD ARGS...
   local impl="$1"; shift
-  case "$impl" in cli) cli "$@";; py) py "$@";; node) node_ "$@";; go) go_ "$@";; java) java_ "$@";; php) php_ "$@";; ruby) ruby_ "$@";; esac
+  case "$impl" in cli) cli "$@";; py) py "$@";; node) node_ "$@";; go) go_ "$@";; java) java_ "$@";; php) php_ "$@";; ruby) ruby_ "$@";; dotnet) dotnet_ "$@";; dart) dart_ "$@";; esac
 }
 
 IMPLS=(cli py node go)
+if [ "${INTEROP_DART:-0}" = 1 ]; then
+  (cd "$ROOT/interop/drivers/dart" && "${DART:-dart}" pub get >"$WORK/dart-pub.log" 2>&1) || { cat "$WORK/dart-pub.log"; exit 1; }
+  IMPLS+=(dart)
+fi
+if [ "${INTEROP_DOTNET:-0}" = 1 ]; then
+  DOTNET_OUT="$WORK/dotnet-driver"
+  "${DOTNET:-dotnet}" build "$ROOT/interop/drivers/dotnet" -c Release -o "$DOTNET_OUT" -v q --nologo >"$WORK/dotnet-build.log" 2>&1 \
+    || { cat "$WORK/dotnet-build.log"; exit 1; }
+  IMPLS+=(dotnet)
+fi
 [ "${INTEROP_PHP:-0}" = 1 ] && IMPLS+=(php)
 [ "${INTEROP_RUBY:-0}" = 1 ] && IMPLS+=(ruby)
 if [ "${INTEROP_JAVA:-0}" = 1 ]; then

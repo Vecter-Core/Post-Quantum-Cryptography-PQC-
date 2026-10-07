@@ -1,0 +1,231 @@
+# Release artifacts for a tag `vX.Y.Z` (or a manual dry run): CLI binaries, C libraries, Python
+# wheels, an npm package, a NuGet package, checksums and build provenance attestations.
+#
+# Nothing is published to a package registry here: all crates are `publish = false` while the
+# project is pre-release and unaudited, and registry credentials are not part of this repository.
+# A tag creates a GitHub *pre-release* with the artifacts; publishing to PyPI, npm or NuGet is a
+# separate, deliberate step (see docs/RELEASING.md).
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  native:
+    name: native (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64, os: ubuntu-latest, target: x86_64-unknown-linux-gnu, rid: linux-x64 }
+          - { name: linux-aarch64, os: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu, rid: linux-arm64 }
+          - { name: macos-aarch64, os: macos-latest, target: aarch64-apple-darwin, rid: osx-arm64 }
+          - { name: macos-x86_64, os: macos-latest, target: x86_64-apple-darwin, rid: osx-x64 }
+          - { name: windows-x86_64, os: windows-latest, target: x86_64-pc-windows-msvc, rid: win-x64 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-${{ matrix.target }}
+      - name: Build the CLI and the C library
+        run: cargo build --release --locked --target ${{ matrix.target }} -p vpqc-cli -p vpqc-ffi
+      - name: Test what can run on this runner
+        if: matrix.name != 'macos-x86_64'
+        run: cargo test --release --locked --target ${{ matrix.target }} -p vpqc-cli -p vpqc-ffi
+      - name: Stage
+        shell: bash
+        run: |
+          set -euo pipefail
+          T=target/${{ matrix.target }}/release
+          D=vpqc-${{ matrix.name }}
+          mkdir -p "$D/include" "$D/lib" "dist" "native/${{ matrix.rid }}"
+          cp LICENSE README.md "$D/"
+          cp crates/vpqc-ffi/include/vpqc.h "$D/include/"
+          case "${{ matrix.target }}" in
+            *windows*) cp $T/vpqc.exe "$D/"; cp $T/vpqc_ffi.dll $T/vpqc_ffi.dll.lib $T/vpqc_ffi.lib "$D/lib/"
+                       cp $T/vpqc_ffi.dll native/${{ matrix.rid }}/ ;;
+            *apple*)   cp $T/vpqc "$D/"; cp $T/libvpqc_ffi.dylib $T/libvpqc_ffi.a "$D/lib/"
+                       cp $T/libvpqc_ffi.dylib native/${{ matrix.rid }}/ ;;
+            *)         cp $T/vpqc "$D/"; cp $T/libvpqc_ffi.so $T/libvpqc_ffi.a "$D/lib/"
+                       cp $T/libvpqc_ffi.so native/${{ matrix.rid }}/ ;;
+          esac
+          if [ "${{ runner.os }}" = Windows ]; then 7z a "dist/$D.zip" "./$D" >/dev/null; else tar czf "dist/$D.tar.gz" "$D"; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.rid }}
+          path: native/${{ matrix.rid }}/*
+          if-no-files-found: error
+
+  # A fully static CLI that runs on any Linux (no glibc requirement).
+  cli-static:
+    name: CLI (linux musl, static)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: x86_64-unknown-linux-musl }
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - run: cargo build --release --locked --target x86_64-unknown-linux-musl -p vpqc-cli
+      - name: Stage and smoke test
+        run: |
+          set -euo pipefail
+          B=target/x86_64-unknown-linux-musl/release/vpqc
+          file "$B" | grep -q "static"
+          "$B" keygen --purpose encrypt --out smoke >/dev/null 2>&1
+          echo hello | "$B" seal --to smoke.pub -o smoke.sealed
+          test "$("$B" open --key smoke.vpqc-secret smoke.sealed)" = hello
+          mkdir -p dist
+          strip "$B"
+          D=vpqc-linux-x86_64-static
+          mkdir "$D" && cp "$B" LICENSE README.md "$D/"
+          tar czf "dist/$D.tar.gz" "$D"
+      - uses: actions/upload-artifact@v4
+        with: { name: dist-linux-static, path: dist/*, if-no-files-found: error }
+
+  python:
+    name: Python wheel (${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64, os: ubuntu-latest, manylinux: "2_28" }
+          - { name: linux-aarch64, os: ubuntu-24.04-arm, manylinux: "2_28" }
+          - { name: macos-aarch64, os: macos-latest, manylinux: "auto" }
+          - { name: windows-x86_64, os: windows-latest, manylinux: "auto" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      # The wheel is abi3 (CPython >= 3.9): one wheel per platform.
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: build
+          args: --release --locked --out dist
+          working-directory: bindings/python
+          manylinux: ${{ matrix.manylinux }}
+      - name: Install the wheel and run its tests
+        shell: bash
+        run: |
+          python -m venv .venv
+          if [ "${{ runner.os }}" = Windows ]; then . .venv/Scripts/activate; else . .venv/bin/activate; fi
+          pip install pytest
+          pip install --no-index --find-links bindings/python/dist vpqc
+          # Run the tests from a copy so that the installed package, not the source tree, is used.
+          cp -r bindings/python/tests "$RUNNER_TEMP/pytests"
+          (cd "$RUNNER_TEMP" && python -m pytest -q pytests)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-python-${{ matrix.name }}
+          path: bindings/python/dist/*.whl
+          if-no-files-found: error
+
+  python-sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+          working-directory: bindings/python
+      - uses: actions/upload-artifact@v4
+        with: { name: dist-python-sdist, path: bindings/python/dist/*.tar.gz, if-no-files-found: error }
+
+  npm:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: bindings/js }
+      - uses: taiki-e/install-action@v2
+        with: { tool: "wasm-bindgen-cli@0.2.129" }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Build, test and pack
+        working-directory: bindings/js
+        run: |
+          sh scripts/build.sh
+          node --test tests/*.test.js
+          mkdir -p dist && npm pack --pack-destination dist
+      - uses: actions/upload-artifact@v4
+        with: { name: dist-npm, path: bindings/js/dist/*.tgz, if-no-files-found: error }
+
+  nuget:
+    name: NuGet package
+    needs: native
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: 8.0.x }
+      # Native libraries go to runtimes/<rid>/native, where .NET finds them without configuration.
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: bindings/dotnet/src/runtimes-staging
+      - name: Lay out runtimes and pack
+        run: |
+          set -euo pipefail
+          cd bindings/dotnet/src
+          for d in runtimes-staging/native-*; do
+            rid="${d#runtimes-staging/native-}"
+            mkdir -p "runtimes/$rid/native"
+            cp "$d"/* "runtimes/$rid/native/"
+          done
+          rm -rf runtimes-staging
+          dotnet pack -c Release -o ../dist
+          ls -l ../dist
+      - uses: actions/upload-artifact@v4
+        with: { name: dist-nuget, path: bindings/dotnet/dist/*.nupkg, if-no-files-found: error }
+
+  release:
+    name: checksums, provenance, GitHub pre-release
+    needs: [native, cli-static, python, python-sdist, npm, nuget]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the release
+      id-token: write # build provenance
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+      - name: Checksums
+        run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: dist/*
+      - uses: actions/upload-artifact@v4
+        with: { name: release-files, path: dist/* }
+      - name: GitHub pre-release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" dist/* \
+            --repo "${{ github.repository }}" \
+            --prerelease --generate-notes \
+            --title "${{ github.ref_name }} (pre-release, unaudited)"

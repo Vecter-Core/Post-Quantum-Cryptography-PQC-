@@ -324,9 +324,16 @@ wg set wg0 peer "$A_WG_PUB" preshared-key wg0-alice.psk
 ```sh
 vpqc scan ./project                      # tìm thuật toán dễ bị lượng tử, xếp theo mức ưu tiên
 vpqc scan ./project --format cbom -o cbom.json
+vpqc scan . --format sarif -o vpqc.sarif  # chú thích trên GitHub code scanning (xem dưới)
 vpqc scan ./project --fail-on quantum-vulnerable    # chặn trong CI
 ```
 
 Thứ tự ưu tiên di trú (ADR-0003): **T0** trao đổi khoá/mã hoá khoá công khai (rủi ro hiện hữu)
 → **T1** chữ ký sống dài → **T2** chữ ký ngắn hạn → **T3** đối xứng/băm (không đổi) →
 **T4** thuật toán yếu sẵn có (MD5, SHA-1, DES, RC4...).
+
+**GitHub Code Scanning:** `--format sarif` xuất SARIF 2.1.0 (đã kiểm theo schema chính thức) chỉ
+gồm *vấn đề* (dễ bị lượng tử và yếu; thuật toán hậu lượng tử không bị báo). T0/T1 là `error`, còn
+lại `warning`; mỗi thuật toán là một quy tắc `vpqc/<tên>` kèm lời khuyên. Chạy từ gốc repo
+(`vpqc scan .`) để đường dẫn tương đối và chú thích bám đúng tệp. Mẫu workflow đầy đủ (tải SARIF
+và lưu CBOM): `docs/examples/github-code-scanning.yml`.

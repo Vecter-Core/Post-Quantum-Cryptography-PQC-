@@ -41,7 +41,9 @@ vpqc encrypt --to alice.pub --to recovery.pub -o backup.tar.vpqc backup.tar   # 
 | Java | `bindings/java` | Panama FFM + C ABI | có |
 | PHP | `bindings/php` | FFI + C ABI | có |
 | Ruby | `bindings/ruby` | ffi gem + C ABI | có |
-| .NET, Swift, Kotlin/Android, Dart | | C ABI | chưa |
+| .NET | `bindings/dotnet` | P/Invoke + C ABI | có |
+| Dart | `bindings/dart` | dart:ffi + C ABI | có |
+| Swift, Kotlin/Android | | C ABI | chưa |
 
 Kiểm tra tương tác giữa các thư viện: `interop/run.sh` (xem `docs/ROADMAP.md`).
 

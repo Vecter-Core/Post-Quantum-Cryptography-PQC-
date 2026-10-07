@@ -18,5 +18,5 @@ mod vpn;
 mod walk;
 
 pub use model::{Family, Finding, Purpose, Report, Risk, Source};
-pub use output::{to_cbom, to_json, to_text};
+pub use output::{to_cbom, to_json, to_sarif, to_text};
 pub use walk::{Options, scan_bytes, scan_path};

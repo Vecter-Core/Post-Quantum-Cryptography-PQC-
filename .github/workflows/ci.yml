@@ -157,6 +157,12 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
       - uses: shivammathur/setup-php@v2
         with:
           php-version: "8.3"
@@ -188,11 +194,22 @@ jobs:
 
       # Go
       - run: |
-          (cd bindings/go && go vet ./... && go test -race -count=1 ./... && go build -o ../../target/interop-go ./cmd/interop)
+          (cd bindings/go && go vet ./... && VPQC_CLI="$PWD/../../target/release/vpqc" go test -race -count=1 ./... && go build -o ../../target/interop-go ./cmd/interop)
 
       # Java (Foreign Function & Memory API, JDK 21 preview)
       - run: |
           (cd bindings/java && mvn -B test && mvn -B -q package -DskipTests)
+
+      # .NET (P/Invoke)
+      - run: |
+          VPQC_LIBRARY="$PWD/target/release/libvpqc_ffi.so" VPQC_CLI="$PWD/target/release/vpqc" dotnet test bindings/dotnet/tests -c Release
+
+      # Dart (dart:ffi)
+      - run: |
+          cd bindings/dart
+          dart pub get
+          dart analyze --fatal-infos
+          VPQC_LIBRARY="$PWD/../../target/release/libvpqc_ffi.so" VPQC_CLI="$PWD/../../target/release/vpqc" dart test
 
       # PHP (FFI)
       - run: |
@@ -212,6 +229,10 @@ jobs:
           done
           ./target/release/vpqc scan crates/vpqc-scan/tests/fixtures --format cbom -o /tmp/cbom.json
           python scripts/validate-cbom.py /tmp/cbom.json /tmp/cdx
+          # SARIF for GitHub code scanning, against the official schema
+          curl -sSfL -o /tmp/sarif-schema.json https://raw.githubusercontent.com/oasis-tcs/sarif-spec/main/sarif-2.1/schema/sarif-schema-2.1.0.json
+          ./target/release/vpqc scan crates/vpqc-scan/tests/fixtures --format sarif -o /tmp/report.sarif
+          python scripts/validate-sarif.py /tmp/report.sarif /tmp/sarif-schema.json
 
       # Hybrid TLS against an independent stack (Go crypto/tls, X25519MLKEM768 only)
       - run: ./interop/tls.sh
@@ -219,4 +240,4 @@ jobs:
       # Cross-language interoperability matrix (all implementations)
       - run: |
           . .venv/bin/activate
-          PYTHON="$(which python)" INTEROP_JAVA=1 INTEROP_PHP=1 INTEROP_RUBY=1 ./interop/run.sh
+          PYTHON="$(which python)" INTEROP_JAVA=1 INTEROP_PHP=1 INTEROP_RUBY=1 INTEROP_DOTNET=1 INTEROP_DART=1 ./interop/run.sh

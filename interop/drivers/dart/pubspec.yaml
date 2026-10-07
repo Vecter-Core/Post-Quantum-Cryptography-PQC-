@@ -1,0 +1,7 @@
+name: vpqc_interop_driver
+publish_to: none
+environment:
+  sdk: ^3.3.0
+dependencies:
+  vpqc:
+    path: ../../../bindings/dart

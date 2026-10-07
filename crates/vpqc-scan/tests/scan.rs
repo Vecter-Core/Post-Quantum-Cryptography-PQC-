@@ -552,3 +552,65 @@ fn vpn_configurations_are_audited() {
         assert!(!out.contains(secret), "key leaked");
     }
 }
+
+#[test]
+fn sarif_reports_only_problems_with_stable_rules() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("a.py"),
+        "h = hashlib.md5(b'x')\nk = rsa.generate_private_key(65537, 2048)\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("pq.go"), "kem := mlkem.GenerateKey768()\n").unwrap();
+    let r = scan_path(dir.path(), &Options::default()).unwrap();
+    let doc: serde_json::Value = serde_json::from_str(&vpqc_scan::to_sarif(&r)).unwrap();
+    assert_eq!(doc["version"], "2.1.0");
+    let run = &doc["runs"][0];
+    let results = run["results"].as_array().unwrap();
+    assert!(!results.is_empty());
+    // Post-quantum findings are not problems.
+    assert!(results.iter().all(|x| {
+        !x["message"]["text"]
+            .as_str()
+            .unwrap()
+            .contains("post-quantum]")
+    }));
+    assert!(results.iter().all(|x| {
+        !x["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+            .as_str()
+            .unwrap()
+            .ends_with("pq.go")
+    }));
+    // Every result points at a rule that exists, and rule ids are unique.
+    let rules: Vec<&str> = run["tool"]["driver"]["rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x["id"].as_str().unwrap())
+        .collect();
+    let mut unique = rules.clone();
+    unique.sort();
+    unique.dedup();
+    assert_eq!(unique.len(), rules.len());
+    for x in results {
+        assert!(rules.contains(&x["ruleId"].as_str().unwrap()));
+        assert!(
+            x["locations"][0]["physicalLocation"]["region"]["startLine"]
+                .as_u64()
+                .unwrap()
+                >= 1
+        );
+        assert!(
+            !x["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+                .as_str()
+                .unwrap()
+                .contains('\\')
+        );
+    }
+    // RSA of unknown purpose is T0/T1: an error.
+    assert!(
+        results
+            .iter()
+            .any(|x| x["level"] == "error" && x["ruleId"].as_str().unwrap().contains("rsa"))
+    );
+}
