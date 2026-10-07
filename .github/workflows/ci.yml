@@ -132,9 +132,9 @@ jobs:
         with:
           components: miri
       - uses: Swatinem/rust-cache@v2
-      # Undefined-behaviour check of the untrusted-input parsers. The crypto backends and the
+      # `+nightly`: rust-toolchain.toml pins stable. Undefined-behaviour check of the untrusted-input parsers. The crypto backends and the
       # C ABI are covered by fuzzing and valgrind instead (Miri is too slow for them).
-      - run: cargo miri test -p vpqc-format -p vpqc-cose -p vpqc-ssh --lib
+      - run: cargo +nightly miri test -p vpqc-format -p vpqc-cose -p vpqc-ssh --lib
         env:
           MIRIFLAGS: -Zmiri-disable-isolation
 
