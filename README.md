@@ -1,6 +1,13 @@
 # Post-Quantum Security
 Achieving quantum security while maintaining quantum resistance makes it easier to integrate into programming languages, offering a lightweight and user-friendly solution.
 
+## Tài liệu
+
+[Hướng dẫn nhanh](docs/GUIDE.md) · [Lộ trình và trạng thái](docs/ROADMAP.md) ·
+[Mô hình đe doạ](docs/THREAT_MODEL.md) · [Hiệu năng và kích thước](docs/PERFORMANCE.md) ·
+[Chuẩn cần theo dõi](docs/STANDARDS.md) · [Phát hành](docs/RELEASING.md) ·
+[Các quyết định thiết kế (ADR)](docs/adr/) · [Chính sách bảo mật](SECURITY.md) · [Nhật ký thay đổi](CHANGELOG.md)
+
 ## Kế hoạch dự án
 
 - Lõi duy nhất viết bằng **Rust**, bám theo chuẩn NIST (FIPS 203 ML-KEM, FIPS 204 ML-DSA, FIPS 205 SLH-DSA; theo dõi FN-DSA, HQC).

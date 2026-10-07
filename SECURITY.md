@@ -1,8 +1,10 @@
 # Security policy
 
 **vpqc is pre-release (0.0.x) and has not been audited.** Do not use it to protect real
-secrets yet. Constant-time behaviour is inherited from the backend (libcrux) and has not
-been independently measured by this project.
+secrets yet. Constant-time behaviour is inherited from the backends and has been checked by
+this project with secret tracking under valgrind and timing measurements (tools/ct-check:
+evidence, not proof); it has not been reviewed by a third party. See docs/THREAT_MODEL.md for
+what is and is not in scope.
 
 ## Reporting a vulnerability
 

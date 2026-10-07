@@ -614,3 +614,70 @@ fn sarif_reports_only_problems_with_stable_rules() {
             .any(|x| x["level"] == "error" && x["ruleId"].as_str().unwrap().contains("rsa"))
     );
 }
+
+#[test]
+fn lint_suggests_vpqc_calls_per_language() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("app.py"),
+        "k = rsa.generate_private_key(65537, 2048)\nh = hashlib.md5(b'x')\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("kx.go"),
+        "key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)\n",
+    )
+    .unwrap();
+    fs::write(
+        dir.path().join("nginx.conf"),
+        "ssl_ecdh_curve prime256v1;\n",
+    )
+    .unwrap();
+    fs::write(dir.path().join("pq.go"), "kem := mlkem.GenerateKey768()\n").unwrap();
+    let r = scan_path(dir.path(), &Options::default()).unwrap();
+
+    let text = vpqc_scan::to_lint_text(&r);
+    assert!(
+        text.contains("vpqc.generate_encryption_keypair()"),
+        "{text}"
+    );
+    assert!(text.contains("vpqc.generate_signing_keypair()"), "{text}");
+    assert!(
+        text.contains("vpqc.GenerateSigningKeypair(vpqc.ProfileStandard)"),
+        "{text}"
+    );
+    assert!(text.contains("SHA-256, SHA-384 or SHA-3"), "{text}");
+    // Configuration files get the advice text, not a code snippet; post-quantum code is not a problem.
+    assert!(text.contains("advice:"), "{text}");
+    assert!(!text.contains("pq.go"), "{text}");
+    // A second mention in the same file does not repeat the snippet.
+    assert_eq!(
+        text.matches("vpqc.generate_encryption_keypair()").count(),
+        1,
+        "{text}"
+    );
+
+    let json: serde_json::Value = serde_json::from_str(&vpqc_scan::to_lint_json(&r)).unwrap();
+    let findings = json["findings"].as_array().unwrap();
+    assert!(
+        findings
+            .iter()
+            .any(|f| f["path"].as_str().unwrap().ends_with("nginx.conf")
+                && f["suggestion"].is_null())
+    );
+    assert!(findings.iter().any(|f| f["suggestion"]["language"] == "Go"));
+    // Most urgent tier first.
+    let tiers: Vec<&str> = findings
+        .iter()
+        .map(|f| f["tier"].as_str().unwrap())
+        .collect();
+    let mut sorted = tiers.clone();
+    sorted.sort();
+    assert_eq!(tiers, sorted);
+
+    // Clean tree.
+    let clean = tempfile::tempdir().unwrap();
+    fs::write(clean.path().join("ok.py"), "x = 1\n").unwrap();
+    let r = scan_path(clean.path(), &Options::default()).unwrap();
+    assert!(vpqc_scan::to_lint_text(&r).contains("No quantum-vulnerable"));
+}

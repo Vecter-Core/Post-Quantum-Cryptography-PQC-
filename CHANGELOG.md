@@ -23,7 +23,13 @@ still change, and nothing here is yet suitable for protecting real secrets.
 - **Assurance:** coverage-guided fuzzing (10 targets), constant-time checks (valgrind, dudect),
   official test vectors, differential tests against RustCrypto, interop with OpenSSL, OpenSSH,
   WireGuard, libsodium, argon2-cffi, panva/jose, `coset`, cbor2 and Go `crypto/tls`.
-- **Release engineering:** reproducible `--locked` builds; release workflow producing CLI
+- **Documentation:** threat model (docs/THREAT_MODEL.md), measured sizes and latency per profile
+  (docs/PERFORMANCE.md, `cargo bench -p vpqc`), release procedure, shadow-mode and no-kill-switch
+  decision (ADR-0015) with an incident-response procedure.
+- **Migration aids:** `vpqc lint` (per-language replacement suggestions), `vpqc scan --format sarif`.
+- **Release engineering:** reproducible static CLI (checked in CI), CycloneDX SBOMs and a CBOM per
+  release.
+- **Release engineering (workflow):** reproducible `--locked` builds; release workflow producing CLI
   binaries, C libraries, Python wheels, an npm package and a NuGet package with checksums and
   build provenance (docs/RELEASING.md).
 

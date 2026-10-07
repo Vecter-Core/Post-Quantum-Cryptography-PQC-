@@ -16,6 +16,8 @@ builds everything but creates no release):
 | `vpqc-*.whl`, `vpqc-*.tar.gz` | Python: one `abi3` wheel per platform (CPython 3.9+; manylinux 2_28 on Linux), and the sdist. Each wheel is installed and tested before upload |
 | `vpqc-core-*.tgz` | npm package `@vpqc/core` (WebAssembly for Node and browsers); tested before packing |
 | `Vecter.Vpqc.*.nupkg` | NuGet package with the native libraries for 5 runtime identifiers under `runtimes/` |
+| `sbom-*.cdx.json` | CycloneDX 1.5 software bills of materials (CLI, TLS sidecar, C library): every dependency of the binaries, validated against the official schema |
+| `cbom-vpqc.cdx.json` | CycloneDX 1.6 cryptographic bill of materials of the project's own source (which algorithms vpqc itself uses) |
 | `SHA256SUMS` | Checksums of all of the above |
 
 Every file also gets a build provenance attestation (GitHub artifact attestations). Verify a
@@ -48,6 +50,13 @@ Not done by the workflow, on purpose. When the time comes, from the release arti
 
 Publishing names on a registry is hard to undo: do it only for a version you are willing to
 support.
+
+## Reproducible builds
+
+`scripts/repro-check.sh` (CI job *reproducible build*) builds the CLI twice from two different
+directories and requires byte-identical binaries (`--locked`, path remapping, no incremental
+state). The release builds use the same path remapping. Verified for the static Linux (musl)
+CLI; glibc, macOS and Windows builds embed toolchain-specific data and are not checked.
 
 ## Reproducing a build locally
 

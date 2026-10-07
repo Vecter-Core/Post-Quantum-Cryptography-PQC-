@@ -40,6 +40,9 @@ jobs:
         with:
           key: release-${{ matrix.target }}
       - name: Build the CLI and the C library
+        env:
+          # The checkout and cargo paths must not end up in the binaries (reproducible builds).
+          RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/src --remap-path-prefix=${{ runner.temp }}=/tmp
         run: cargo build --release --locked --target ${{ matrix.target }} -p vpqc-cli -p vpqc-ffi
       - name: Test what can run on this runner
         if: matrix.name != 'macos-x86_64'
@@ -83,7 +86,10 @@ jobs:
         with: { targets: x86_64-unknown-linux-musl }
       - uses: Swatinem/rust-cache@v2
       - run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - run: cargo build --release --locked --target x86_64-unknown-linux-musl -p vpqc-cli
+      - name: Build
+        env:
+          RUSTFLAGS: --remap-path-prefix=${{ github.workspace }}=/src
+        run: cargo build --release --locked --target x86_64-unknown-linux-musl -p vpqc-cli
       - name: Stage and smoke test
         run: |
           set -euo pipefail
@@ -199,9 +205,48 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: dist-nuget, path: bindings/dotnet/dist/*.nupkg, if-no-files-found: error }
 
+  # Software and cryptography bills of materials (CycloneDX): what the binaries are made of, and
+  # which cryptographic algorithms the project itself uses.
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: cargo install cargo-cyclonedx --locked
+      - name: Generate
+        run: |
+          set -euo pipefail
+          cargo cyclonedx --format json --describe binaries --spec-version 1.5
+          mkdir -p dist
+          cp crates/vpqc-cli/vpqc_bin.cdx.json dist/sbom-vpqc-cli.cdx.json
+          cp crates/vpqc-tls/vpqc-tls-proxy_bin.cdx.json dist/sbom-vpqc-tls-proxy.cdx.json
+          cp crates/vpqc-ffi/vpqc_ffi_cdylib-staticlib-rlib.cdx.json dist/sbom-vpqc-ffi.cdx.json
+          cargo build --release --locked -p vpqc-cli
+          target/release/vpqc scan . --format cbom -o dist/cbom-vpqc.cdx.json \
+            --exclude target --exclude tests --exclude fixtures --exclude interop --exclude fuzz \
+            --exclude node_modules --exclude bindings/dotnet/obj
+      - name: Validate against the CycloneDX schemas
+        run: |
+          set -euo pipefail
+          python -m pip install jsonschema referencing
+          mkdir -p cdx
+          for v in 1.5 1.6; do curl -sSfL -o cdx/bom-$v.schema.json https://raw.githubusercontent.com/CycloneDX/specification/master/schema/bom-$v.schema.json; done
+          for f in spdx.schema.json jsf-0.82.schema.json; do curl -sSfL -o cdx/$f https://raw.githubusercontent.com/CycloneDX/specification/master/schema/$f; done
+          for f in dist/sbom-*.json; do python scripts/validate-cbom.py "$f" cdx 1.5; done
+          python scripts/validate-cbom.py dist/cbom-vpqc.cdx.json cdx 1.6
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-sbom
+          path: dist/*.json
+          if-no-files-found: error
+
   release:
     name: checksums, provenance, GitHub pre-release
-    needs: [native, cli-static, python, python-sdist, npm, nuget]
+    needs: [native, cli-static, python, python-sdist, npm, nuget, sbom]
     runs-on: ubuntu-latest
     permissions:
       contents: write # create the release

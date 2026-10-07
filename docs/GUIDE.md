@@ -332,8 +332,55 @@ Thứ tự ưu tiên di trú (ADR-0003): **T0** trao đổi khoá/mã hoá khoá
 → **T1** chữ ký sống dài → **T2** chữ ký ngắn hạn → **T3** đối xứng/băm (không đổi) →
 **T4** thuật toán yếu sẵn có (MD5, SHA-1, DES, RC4...).
 
+**Gợi ý sửa mã (`vpqc lint`):** với mỗi phát hiện *trong mã nguồn* (Python, JS/TS, Go, Java/Kotlin,
+PHP, Ruby, C#, Dart, Rust, C/C++), lệnh in đoạn gọi vpqc thay thế theo đúng ngôn ngữ của tệp, xếp từ
+tầng khẩn cấp nhất (T0) xuống T4; cấu hình thì in lời khuyên. Mỗi tệp chỉ in đoạn mã một lần.
+
+```sh
+vpqc lint ./project                  # văn bản
+vpqc lint ./project --json           # cho công cụ khác
+vpqc lint ./project --fail           # thoát mã 2 nếu còn gì phải di trú (CI)
+```
+
+Đây là điểm xuất phát, không phải thay thế nguyên xi: hộp `seal` và chữ ký của vpqc có định dạng
+riêng (không đọc được dữ liệu RSA-OAEP/ECIES/PKCS#1), `sign` cần *context*; với chứng chỉ, JWT,
+token hãy dùng `vpqc x509/jwt/cwt` (theo chuẩn).
+
 **GitHub Code Scanning:** `--format sarif` xuất SARIF 2.1.0 (đã kiểm theo schema chính thức) chỉ
 gồm *vấn đề* (dễ bị lượng tử và yếu; thuật toán hậu lượng tử không bị báo). T0/T1 là `error`, còn
 lại `warning`; mỗi thuật toán là một quy tắc `vpqc/<tên>` kèm lời khuyên. Chạy từ gốc repo
 (`vpqc scan .`) để đường dẫn tương đối và chú thích bám đúng tệp. Mẫu workflow đầy đủ (tải SARIF
 và lưu CBOM): `docs/examples/github-code-scanning.yml`.
+
+## 5. Khi khoá bị lộ hoặc một thuật toán bị phá (quy trình)
+
+vpqc **không có công tắc toàn cục đổi profile** (ADR-0015): công tắc như vậy là cửa hạ cấp cho kẻ
+tấn công. Profile là thuộc tính của *khoá*, nên ứng phó là một quy trình có chủ đích.
+
+**Khoá bí mật của một người nhận bị lộ**
+1. Tạo khoá mới (`vpqc keygen`; bảo vệ bằng `--passphrase`/`--kms`).
+2. Tệp dạng phong bì (`encrypt --to A --to B`, hoặc `--envelope`): `vpqc rewrap --key <khoá còn an
+   toàn của một người nhận hiện tại> --to <danh sách người nhận mới> ...` loại khoá bị lộ khỏi danh
+   sách mà không mã hoá lại dữ liệu.
+3. **`rewrap` không đổi khoá tệp.** Người bị loại, hoặc kẻ có khoá bị lộ, đã đọc/biết được khoá tệp
+   của những tệp họ truy cập được. Với dữ liệu nhạy cảm đó phải **giải mã rồi mã hoá lại hẳn**
+   (khoá tệp mới), không chỉ `rewrap`.
+4. Hộp `seal` đơn lẻ và tệp mã hoá một người nhận: mã hoá lại cho khoá mới.
+5. Chữ ký: phát hành khoá ký mới, đổi `kid`/chứng chỉ (`vpqc x509 issue`), thu hồi theo cách hệ
+   thống của bạn (vpqc không có CRL/OCSP), ký lại những gì cần giá trị lâu dài.
+
+**Một thành phần của bộ lai bị phá** (chỉ X25519 hoặc chỉ ML-KEM; chỉ Ed25519 hoặc chỉ ML-DSA)
+- Profile `standard`/`high` vẫn an toàn bằng thành phần còn lại (trao đổi khoá lai; chữ ký composite
+  yêu cầu cả hai). Không cần hành động khẩn cấp nhưng **phải lên kế hoạch** đổi trong tuần/tháng:
+  cập nhật thư viện khi có bản mới, tạo khoá theo profile thay thế (`high`, `cnsa2`...), rewrap hoặc
+  mã hoá lại, phát hành lại chứng chỉ/token.
+- Theo dõi `docs/STANDARDS.md` và thông báo bảo mật (`SECURITY.md`).
+
+**Một thuật toán bị phá hoàn toàn** (cả hai thành phần, hoặc profile không lai như `cnsa2`)
+- Dừng dùng profile đó cho dữ liệu mới ngay; tạo khoá bằng profile khác; mã hoá lại hẳn dữ liệu
+  quan trọng (chỉ `rewrap` là chưa đủ, xem trên). Thư viện sẽ ra phiên bản định dạng mới và gỡ thuật
+  toán bị phá khỏi đường *xác minh* (ADR-0005); đến lúc đó nâng cấp là bắt buộc.
+
+**Phát hiện sớm:** `vpqc scan` định kỳ (xem mục 4) cho thấy chỗ nào còn dùng thuật toán cũ;
+`vpqc ssh probe`, `vpqc-tls-proxy probe` kiểm máy chủ từ ngoài; `vpqc-tls-proxy ... --allow-classical`
+là chế độ *shadow* ghi log nhóm trao đổi khoá của từng kết nối trước khi chuyển sang bắt buộc lai.
