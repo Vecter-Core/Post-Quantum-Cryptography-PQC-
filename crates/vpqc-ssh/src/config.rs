@@ -228,6 +228,9 @@ mod tests {
             vec!["*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*b"; 200].join(",")
         );
         assert_eq!(audit_kex_directive(&many), KexAudit::KeepsDefault);
-        assert!(start.elapsed() < std::time::Duration::from_secs(2));
+        // Wall-clock bound: meaningless under the Miri interpreter.
+        if !cfg!(miri) {
+            assert!(start.elapsed() < std::time::Duration::from_secs(2));
+        }
     }
 }

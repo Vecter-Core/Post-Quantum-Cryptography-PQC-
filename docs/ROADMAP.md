@@ -52,7 +52,7 @@
 | **Phát hành gói** (`.github/workflows/release.yml`, docs/RELEASING.md): binary CLI + thư viện C cho linux x86_64/aarch64, macOS, Windows; CLI tĩnh musl; wheel Python `abi3` đa nền tảng (cài và chạy test trước khi tải lên); gói npm; gói NuGet; `SHA256SUMS`; chứng thực nguồn gốc build; SBOM CycloneDX 1.5 + CBOM của chính dự án | **Có workflow; chưa chạy thật** | Từng lệnh đóng gói đã chạy cục bộ (wheel cài vào venv sạch và qua 19 test; gói npm dùng thử; gói NuGet dùng từ project mới không đặt `VPQC_LIBRARY`; SBOM/CBOM kiểm theo schema; `actionlint` sạch). Workflow chỉ chạy thủ công được **sau khi vào `main`** (GitHub chưa đăng ký workflow mới ở nhánh khác). Không đăng lên registry: mọi crate `publish = false` |
 | **Build tái lập được** (`scripts/repro-check.sh`, job CI "reproducible build") | Xong cho CLI tĩnh Linux | Hai bản dựng ở hai thư mục khác nhau cho binary **giống hệt từng byte** (cùng SHA-256). Chưa kiểm glibc/macOS/Windows |
 | **Mô hình đe doạ** (docs/THREAT_MODEL.md), **hiệu năng và kích thước** (docs/PERFORMANCE.md, `cargo bench -p vpqc`, criterion) | Xong | Mô hình nêu đối thủ, đáp ứng thiết kế, giới hạn và bằng chứng; số đo thật trên một VM dùng chung (chỉ so sánh tương đối giữa các profile) |
-| **Chuỗi cung ứng**: `cargo deny` (CI), `--locked`, SBOM + CBOM mỗi bản phát hành, build tái lập được | Xong (một phần) | Chưa có `cargo vet` và Miri |
+| **Chuỗi cung ứng**: `cargo deny` (CI), `--locked`, SBOM + CBOM mỗi bản phát hành, build tái lập được | Xong (một phần) | Miri chạy trên các parser (CI); chưa có `cargo vet` |
 | Kiểm toán bên ngoài | **Chưa** | **Chưa dùng cho bí mật thật** |
 
 Ghi chú lệch so với sơ đồ mục 3: `vpqc-policy` hiện nằm trong `vpqc-core` (module `profile`);

@@ -122,6 +122,22 @@ jobs:
       # Real WireGuard peers on loopback (kernel WireGuard, else wireguard-go); needs root.
       - run: sudo ./interop/wireguard.sh
 
+  miri:
+    name: Miri (parsers without unsafe code)
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: miri
+      - uses: Swatinem/rust-cache@v2
+      # Undefined-behaviour check of the untrusted-input parsers. The crypto backends and the
+      # C ABI are covered by fuzzing and valgrind instead (Miri is too slow for them).
+      - run: cargo miri test -p vpqc-format -p vpqc-cose -p vpqc-ssh --lib
+        env:
+          MIRIFLAGS: -Zmiri-disable-isolation
+
   reproducible:
     name: reproducible build (CLI, static musl)
     runs-on: ubuntu-latest

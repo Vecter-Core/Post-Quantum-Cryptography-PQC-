@@ -32,6 +32,8 @@ still change, and nothing here is yet suitable for protecting real secrets.
 - **Release engineering (workflow):** reproducible `--locked` builds; release workflow producing CLI
   binaries, C libraries, Python wheels, an npm package and a NuGet package with checksums and
   build provenance (docs/RELEASING.md).
+- **Assurance:** Miri over the untrusted-input parsers (format, COSE/CBOR, SSH config) in CI; the
+  CBOR half-float decoder no longer relies on `powi` for exact results.
 
 ### Not yet
 - External security audit; FIPS 140-3 profile; composite X.509 certificates; registry publishing
