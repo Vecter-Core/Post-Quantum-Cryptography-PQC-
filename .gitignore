@@ -13,8 +13,10 @@ __pycache__/
 interop/jose/node_modules/
 interop/jose/package-lock.json
 # .NET build output
-bin/
-obj/
+bindings/dotnet/**/bin/
+bindings/dotnet/**/obj/
+interop/drivers/dotnet/bin/
+interop/drivers/dotnet/obj/
 bindings/dotnet/dist/
 bindings/dotnet/src/runtimes/
 bindings/dotnet/src/runtimes-staging/
