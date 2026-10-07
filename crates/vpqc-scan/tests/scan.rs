@@ -17,7 +17,8 @@ fn scan_fixtures() -> Report {
 fn find<'a>(r: &'a Report, path_part: &str, algo_part: &str) -> &'a vpqc_scan::Finding {
     r.findings
         .iter()
-        .find(|f| f.path.contains(path_part) && f.algorithm.contains(algo_part))
+        // Paths are matched with `/`, also on Windows where they are printed with `\`.
+        .find(|f| f.path.replace('\\', "/").contains(path_part) && f.algorithm.contains(algo_part))
         .unwrap_or_else(|| {
             panic!(
                 "no finding for {path_part} / {algo_part}: {:#?}",
