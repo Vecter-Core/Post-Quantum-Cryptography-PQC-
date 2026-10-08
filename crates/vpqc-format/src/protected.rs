@@ -312,6 +312,13 @@ mod tests {
             assert!(is_protected_secret_key(&bytes));
             assert_eq!(ProtectedSecretKey::decode(&bytes).unwrap(), key);
             assert_eq!(key.header().len(), bytes.len() - key.ciphertext.len());
+            // The version and object kind are strict and cannot be relabelled.
+            let mut wrong_version = bytes.clone();
+            wrong_version[4] = wrong_version[4].wrapping_add(1);
+            assert!(ProtectedSecretKey::decode(&wrong_version).is_err());
+            let mut wrong_kind = bytes.clone();
+            wrong_kind[5] ^= 1;
+            assert!(ProtectedSecretKey::decode(&wrong_kind).is_err());
             for n in 0..key.header().len() + 16 {
                 assert!(
                     ProtectedSecretKey::decode(&bytes[..n]).is_err(),

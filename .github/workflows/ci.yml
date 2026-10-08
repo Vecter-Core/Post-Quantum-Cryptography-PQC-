@@ -44,13 +44,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
         if: matrix.toolchain == 'stable'
-      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: python3 scripts/check-versions.py
         if: matrix.toolchain == 'stable'
-      - run: cargo test --workspace
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+        if: matrix.toolchain == 'stable'
+      - run: cargo test --workspace --all-targets --locked
         if: matrix.toolchain == 'stable'
       # MSRV: the library crates must keep building on the oldest supported compiler.
       # (vpqc-scan and vpqc-cli need 1.88 because of patched dependencies.)
-      - run: cargo build -p vpqc-core -p vpqc-backend-libcrux -p vpqc-hybrid -p vpqc-format -p vpqc -p vpqc-ffi -p vpqc-jose -p vpqc-cose -p vpqc-ssh
+      - run: cargo build --locked -p vpqc-core -p vpqc-backend-libcrux -p vpqc-hybrid -p vpqc-format -p vpqc -p vpqc-ffi -p vpqc-jose -p vpqc-cose -p vpqc-ssh
         if: matrix.toolchain != 'stable'
 
   fuzz:

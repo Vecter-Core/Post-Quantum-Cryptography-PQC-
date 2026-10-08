@@ -5,7 +5,7 @@ Achieving quantum security while maintaining quantum resistance makes it easier 
 
 [Hướng dẫn nhanh](docs/GUIDE.md) · [Lộ trình và trạng thái](docs/ROADMAP.md) ·
 [Mô hình đe doạ](docs/THREAT_MODEL.md) · [Hiệu năng và kích thước](docs/PERFORMANCE.md) ·
-[Chuẩn cần theo dõi](docs/STANDARDS.md) · [Phát hành](docs/RELEASING.md) ·
+[Kế hoạch triển khai](docs/IMPLEMENTATION_PLAN.md) · [Tương thích định dạng](docs/FORMAT_COMPATIBILITY.md) · [Chuẩn cần theo dõi](docs/STANDARDS.md) · [Phát hành](docs/RELEASING.md) ·
 [Các quyết định thiết kế (ADR)](docs/adr/) · [Chính sách bảo mật](SECURITY.md) · [Nhật ký thay đổi](CHANGELOG.md)
 
 ## Kế hoạch dự án

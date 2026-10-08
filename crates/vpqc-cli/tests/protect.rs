@@ -112,6 +112,24 @@ fn passphrase_protected_keys() {
     assert!(String::from_utf8_lossy(&info.stdout).contains("Argon2id, 16 MiB"));
     decrypts(&env, "a", "a.vpqc-secret");
 
+    // A protected-key mutation must fail before the wrapped key is released.
+    let mut tampered = text.into_bytes();
+    let data_start = tampered
+        .iter()
+        .position(|byte| *byte == b'\n')
+        .map(|i| i + 1)
+        .expect("armored protected key has a header");
+    let i = tampered[data_start..]
+        .iter()
+        .position(|byte| *byte == b'A')
+        .map(|i| data_start + i)
+        .expect("armored protected key has base64 data");
+    tampered[i] = b'B';
+    std::fs::write(env.path("a-tampered.vpqc-secret"), tampered).unwrap();
+    let bad = env.run(&["unprotect", "a-tampered.vpqc-secret", "-o", "bad.plain"], &[]);
+    assert!(!bad.status.success());
+    assert!(!env.path("bad.plain").exists());
+
     // Wrong passphrase, from the variable this time.
     std::fs::write(env.path("m.txt"), b"x").unwrap();
     env.ok(&[

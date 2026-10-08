@@ -124,6 +124,26 @@ fn extreme_length_fields_are_rejected() {
 }
 
 #[test]
+fn format_version_and_kind_are_strict() {
+    for mut sample in valid_samples() {
+        assert!(sample.starts_with(b"VPQC"));
+        let original_version = sample[4];
+        sample[4] = original_version.wrapping_add(1);
+        decode_all(&sample);
+        assert!(decode_public_key(&sample).is_err());
+        assert!(decode_secret_key(&sample).is_err());
+        assert!(Sealed::decode(&sample).is_err());
+        assert!(DetachedSignature::decode(&sample).is_err());
+    }
+
+    let pk = valid_samples().remove(0);
+    let mut wrong_kind = pk.clone();
+    wrong_kind[5] = 1; // sealed kind, but the payload is a public key
+    assert!(decode_public_key(&wrong_kind).is_err());
+    assert!(Sealed::decode(&wrong_kind).is_err());
+}
+
+#[test]
 fn valid_samples_round_trip() {
     assert!(decode_public_key(&valid_samples()[0]).is_ok());
     assert!(decode_secret_key(&valid_samples()[1]).is_ok());

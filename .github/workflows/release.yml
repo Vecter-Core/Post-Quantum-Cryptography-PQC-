@@ -222,13 +222,21 @@ jobs:
           set -euo pipefail
           cargo cyclonedx --format json --describe binaries --spec-version 1.5
           mkdir -p dist
+          for f in \
+            crates/vpqc-cli/vpqc_bin.cdx.json \
+            crates/vpqc-tls/vpqc-tls-proxy_bin.cdx.json \
+            crates/vpqc-ffi/vpqc_ffi_cdylib-staticlib-rlib.cdx.json; do
+            test -s "$f" || { echo "missing or empty SBOM: $f" >&2; exit 1; }
+          done
           cp crates/vpqc-cli/vpqc_bin.cdx.json dist/sbom-vpqc-cli.cdx.json
           cp crates/vpqc-tls/vpqc-tls-proxy_bin.cdx.json dist/sbom-vpqc-tls-proxy.cdx.json
           cp crates/vpqc-ffi/vpqc_ffi_cdylib-staticlib-rlib.cdx.json dist/sbom-vpqc-ffi.cdx.json
           cargo build --release --locked -p vpqc-cli
           target/release/vpqc scan . --format cbom -o dist/cbom-vpqc.cdx.json \
-            --exclude target --exclude tests --exclude fixtures --exclude interop --exclude fuzz \
-            --exclude node_modules --exclude bindings/dotnet/obj
+            --exclude .git --exclude target --exclude dist --exclude .venv \
+            --exclude tests --exclude fixtures --exclude interop --exclude fuzz \
+            --exclude node_modules --exclude bindings/dotnet/obj --exclude coverage
+          python scripts/validate-release-cbom.py dist/cbom-vpqc.cdx.json
       - name: Validate against the CycloneDX schemas
         run: |
           set -euo pipefail
@@ -253,11 +261,18 @@ jobs:
       id-token: write # build provenance
       attestations: write
     steps:
+      - uses: actions/checkout@v4
+      - name: Verify release metadata
+        run: python3 scripts/check-versions.py
       - uses: actions/download-artifact@v4
         with:
           pattern: dist-*
           merge-multiple: true
           path: dist
+      - name: Verify archive layout
+        run: python3 scripts/verify-release-artifacts.py dist
+      - name: Verify package metadata
+        run: python3 scripts/verify-package-metadata.py dist
       - name: Checksums
         run: cd dist && sha256sum * > SHA256SUMS && cat SHA256SUMS
       - uses: actions/attest-build-provenance@v2

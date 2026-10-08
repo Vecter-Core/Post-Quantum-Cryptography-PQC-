@@ -5,6 +5,13 @@ still change, and nothing here is yet suitable for protecting real secrets.
 
 ## Unreleased
 
+### Changed
+- CI uses the locked dependency graph for workspace clippy, all-target tests and MSRV builds.
+- Release validation now checks version consistency, archive layout, package metadata, SBOM presence
+  and CBOM release-safety policy before checksums and attestations.
+- Added a format compatibility policy and stricter version/kind regression tests for persisted
+  objects and protected secret keys.
+
 ### Added
 - **Core:** hybrid and post-quantum key encapsulation and signatures behind profiles
   (`standard`, `fast-auth`, `cnsa2`, `high`); wire formats with algorithm identifiers inside
